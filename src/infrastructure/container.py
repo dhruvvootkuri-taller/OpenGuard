@@ -27,6 +27,15 @@ from src.domain.services.threat_assessment_service import ThreatAssessmentServic
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.llm.claude_haiku_client import ClaudeHaikuClient
 from src.infrastructure.messaging.redis_event_publisher import RedisEventPublisher
+from src.infrastructure.persistence.redis_call_record_repository import (
+    RedisCallRecordRepository,
+)
+from src.infrastructure.persistence.redis_emergency_service_repository import (
+    RedisEmergencyServiceRepository,
+)
+from src.infrastructure.persistence.redis_feed_clip_repository import (
+    RedisFeedClipRepository,
+)
 from src.infrastructure.persistence.redis_security_event_repository import (
     RedisSecurityEventRepository,
 )
@@ -51,6 +60,18 @@ class Container:
     @cached_property
     def repository(self) -> RedisSecurityEventRepository:
         return RedisSecurityEventRepository(self.redis)
+
+    @cached_property
+    def emergency_service_repository(self) -> RedisEmergencyServiceRepository:
+        return RedisEmergencyServiceRepository(self.redis)
+
+    @cached_property
+    def feed_clip_repository(self) -> RedisFeedClipRepository:
+        return RedisFeedClipRepository(self.redis)
+
+    @cached_property
+    def call_record_repository(self) -> RedisCallRecordRepository:
+        return RedisCallRecordRepository(self.redis)
 
     @cached_property
     def publisher(self) -> RedisEventPublisher:
