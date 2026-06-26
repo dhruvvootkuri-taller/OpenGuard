@@ -1,0 +1,88 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #e6edf3;
+  background: #0d1117;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.app__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  border-bottom: 1px solid #21262d;
+  padding-bottom: 1rem;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.app__subtitle {
+  color: #7d8590;
+  font-size: 0.9rem;
+}
+
+.event-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.event-card {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.event-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+
+.badge--info { background: #1f6feb33; color: #58a6ff; }
+.badge--low { background: #23863633; color: #3fb950; }
+.badge--medium { background: #9e6a0333; color: #d29922; }
+.badge--high { background: #bd561d33; color: #ec8e2c; }
+.badge--critical { background: #da363333; color: #f85149; }
+
+.event-card__desc {
+  margin: 0.5rem 0 0;
+  color: #c9d1d9;
+}
+
+.event-card__meta {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #7d8590;
+}
+
+.empty {
+  color: #7d8590;
+  margin-top: 2rem;
+}
