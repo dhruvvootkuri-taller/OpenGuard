@@ -18,3 +18,21 @@ export interface SecurityEvent {
   escalated: boolean;
   detections: DetectionBox[];
 }
+
+/** Payload accepted by POST /api/events. */
+export interface ProcessDetectionRequest {
+  camera_id: string;
+  detections: DetectionBox[];
+  is_armed_zone: boolean;
+  description: string;
+}
+
+/** A single monitor on the video wall. */
+export interface MonitorFeed {
+  /** Stable slot id, e.g. "CAM-01". */
+  id: string;
+  /** Human label for the zone the camera watches. */
+  zone: string;
+  /** Whether this zone is armed (raises threat scoring on the backend). */
+  armed: boolean;
+}
