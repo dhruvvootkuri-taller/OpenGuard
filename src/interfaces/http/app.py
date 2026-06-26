@@ -26,4 +26,5 @@ def create_app(security_event_controller: SecurityEventController) -> FastAPI:
         return {"status": "ok", "service": "open-guard"}
 
     app.include_router(security_event_controller.router)
+    app.include_router(security_event_controller.feeds_router)
     return app

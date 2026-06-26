@@ -28,6 +28,26 @@ class AcknowledgeRequest(BaseModel):
     operator_id: str = Field(..., min_length=1)
 
 
+class AnalyzeFrameRequest(BaseModel):
+    """A single frame captured from a (live) MP4 camera feed.
+
+    ``image_base64`` is the raw base64 of the frame image (no data: prefix).
+    """
+
+    image_base64: str = Field(..., min_length=1)
+    media_type: str = "image/jpeg"
+    is_armed_zone: bool = False
+    zone: str = ""
+
+
+class AnalyzeFrameResponse(BaseModel):
+    camera_id: str
+    is_emergency: bool
+    label: str
+    summary: str
+    event: "SecurityEventResponse | None" = None
+
+
 class DetectionBoxResponse(BaseModel):
     label: str
     confidence: float
@@ -47,3 +67,7 @@ class SecurityEventResponse(BaseModel):
     detected_at: str
     escalated: bool
     detections: list[DetectionBoxResponse]
+
+
+# Resolve the forward reference to SecurityEventResponse defined above.
+AnalyzeFrameResponse.model_rebuild()

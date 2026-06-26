@@ -13,11 +13,15 @@ from fastapi import APIRouter, HTTPException
 
 from src.application.dtos.detection_dtos import (
     AcknowledgeEventInputDTO,
+    AnalyzeFeedFrameInputDTO,
     DetectionBoxDTO,
     ProcessDetectionInputDTO,
 )
 from src.application.use_cases.acknowledge_event_use_case import (
     AcknowledgeEventUseCase,
+)
+from src.application.use_cases.analyze_feed_frame_use_case import (
+    AnalyzeFeedFrameUseCase,
 )
 from src.application.use_cases.list_recent_events_use_case import (
     ListRecentEventsUseCase,
@@ -27,6 +31,8 @@ from src.application.use_cases.process_detection_use_case import (
 )
 from src.interfaces.http.schemas import (
     AcknowledgeRequest,
+    AnalyzeFrameRequest,
+    AnalyzeFrameResponse,
     ProcessDetectionRequest,
     SecurityEventResponse,
 )
@@ -40,11 +46,15 @@ class SecurityEventController:
         process_detection: ProcessDetectionUseCase,
         acknowledge_event: AcknowledgeEventUseCase,
         list_recent_events: ListRecentEventsUseCase,
+        analyze_feed_frame: AnalyzeFeedFrameUseCase,
     ) -> None:
         self._process_detection = process_detection
         self._acknowledge_event = acknowledge_event
         self._list_recent_events = list_recent_events
+        self._analyze_feed_frame = analyze_feed_frame
         self.router = APIRouter(prefix="/api/events", tags=["events"])
+        # Camera-feed routes (MP4 frame analysis) live under /api/feeds.
+        self.feeds_router = APIRouter(prefix="/api/feeds", tags=["feeds"])
         self._register_routes()
 
     def _register_routes(self) -> None:
@@ -60,6 +70,10 @@ class SecurityEventController:
             "/{event_id}/acknowledge", self.acknowledge, methods=["POST"],
             response_model=SecurityEventResponse,
         )
+        self.feeds_router.add_api_route(
+            "/{camera_id}/frame", self.analyze_frame, methods=["POST"],
+            response_model=AnalyzeFrameResponse,
+        )
 
     async def create_event(
         self, request: ProcessDetectionRequest
@@ -74,6 +88,31 @@ class SecurityEventController:
         )
         result = await self._process_detection.execute(dto)
         return SecurityEventResponse(**dataclasses.asdict(result))
+
+    async def analyze_frame(
+        self, camera_id: str, request: AnalyzeFrameRequest
+    ) -> AnalyzeFrameResponse:
+        result = await self._analyze_feed_frame.execute(
+            AnalyzeFeedFrameInputDTO(
+                camera_id=camera_id,
+                image_base64=request.image_base64,
+                media_type=request.media_type,
+                is_armed_zone=request.is_armed_zone,
+                zone=request.zone,
+            )
+        )
+        event = (
+            SecurityEventResponse(**dataclasses.asdict(result.event))
+            if result.event is not None
+            else None
+        )
+        return AnalyzeFrameResponse(
+            camera_id=result.camera_id,
+            is_emergency=result.is_emergency,
+            label=result.label,
+            summary=result.summary,
+            event=event,
+        )
 
     async def list_events(self, limit: int = 50) -> list[SecurityEventResponse]:
         results = await self._list_recent_events.execute(limit=limit)

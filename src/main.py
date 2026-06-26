@@ -24,6 +24,7 @@ def build_app():
         process_detection=container.process_detection_use_case(),
         acknowledge_event=container.acknowledge_event_use_case(),
         list_recent_events=container.list_recent_events_use_case(),
+        analyze_feed_frame=container.analyze_feed_frame_use_case(),
     )
 
     return create_app(security_event_controller=controller)

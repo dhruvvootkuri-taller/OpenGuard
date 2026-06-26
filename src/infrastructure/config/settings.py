@@ -28,6 +28,8 @@ class Settings:
     # Anthropic / Claude Haiku
     anthropic_api_key: str
     anthropic_model: str
+    # Anthropic vision model used to analyse camera-feed frames.
+    anthropic_vision_model: str
 
     # ElevenLabs
     elevenlabs_api_key: str
@@ -54,6 +56,9 @@ class Settings:
             ),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
+            anthropic_vision_model=os.getenv(
+                "ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-20241022"
+            ),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "Rachel"),
             twilio_account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),

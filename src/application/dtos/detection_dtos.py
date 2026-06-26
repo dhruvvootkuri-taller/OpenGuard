@@ -48,3 +48,33 @@ class SecurityEventDTO:
 class AcknowledgeEventInputDTO:
     event_id: str
     operator_id: str
+
+
+@dataclass(frozen=True)
+class AnalyzeFeedFrameInputDTO:
+    """Input contract for the AnalyzeFeedFrameUseCase.
+
+    Represents a single frame captured from a (live) MP4 camera feed.
+    ``image_base64`` is the raw base64 of the frame image (no data: prefix).
+    """
+
+    camera_id: str
+    image_base64: str
+    media_type: str = "image/jpeg"
+    is_armed_zone: bool = False
+    zone: str = ""
+
+
+@dataclass(frozen=True)
+class AnalyzeFeedFrameResultDTO:
+    """Output contract for a single analysed frame.
+
+    ``event`` is populated only when an emergency was detected; otherwise the
+    frame produced no event and the feed continues uninterrupted.
+    """
+
+    camera_id: str
+    is_emergency: bool
+    label: str
+    summary: str
+    event: SecurityEventDTO | None = None
