@@ -15,6 +15,9 @@ from src.interfaces.http.app import create_app
 from src.interfaces.http.controllers.security_event_controller import (
     SecurityEventController,
 )
+from src.interfaces.http.controllers.voice_agent_controller import (
+    VoiceAgentController,
+)
 
 
 def build_app():
@@ -26,7 +29,14 @@ def build_app():
         list_recent_events=container.list_recent_events_use_case(),
     )
 
-    return create_app(security_event_controller=controller)
+    voice_controller = VoiceAgentController(
+        place_emergency_call=container.place_emergency_call_use_case(),
+    )
+
+    return create_app(
+        security_event_controller=controller,
+        voice_agent_controller=voice_controller,
+    )
 
 
 app = build_app()
