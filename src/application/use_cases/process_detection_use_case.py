@@ -2,6 +2,11 @@
 
 Orchestration only. All business rules live in the domain layer
 (ThreatAssessmentService + SecurityEvent invariants).
+
+The fast path (assess + persist + publish) runs inline. The slow,
+side-effectful escalation work (LLM summary, ElevenLabs voice synthesis,
+Twilio call) is offloaded to a background worker through the
+``TaskQueuePort`` — implemented with Celery in infrastructure.
 """
 
 from __future__ import annotations
@@ -12,11 +17,7 @@ from src.application.dtos.detection_dtos import (
 )
 from src.application.mappers.security_event_mapper import SecurityEventMapper
 from src.application.ports.event_publisher_port import EventPublisherPort
-from src.application.ports.llm_port import LLMPort
-from src.application.ports.notification_port import (
-    TelephonyPort,
-    VoiceSynthesisPort,
-)
+from src.application.ports.task_queue_port import TaskQueuePort
 from src.domain.entities.security_event import SecurityEvent
 from src.domain.repositories.security_event_repository import (
     SecurityEventRepository,
@@ -32,19 +33,13 @@ class ProcessDetectionUseCase:
         self,
         repository: SecurityEventRepository,
         threat_service: ThreatAssessmentService,
-        llm: LLMPort,
-        voice: VoiceSynthesisPort,
-        telephony: TelephonyPort,
         publisher: EventPublisherPort,
-        on_call_number: str,
+        task_queue: TaskQueuePort,
     ) -> None:
         self._repository = repository
         self._threat_service = threat_service
-        self._llm = llm
-        self._voice = voice
-        self._telephony = telephony
         self._publisher = publisher
-        self._on_call_number = on_call_number
+        self._task_queue = task_queue
 
     async def execute(self, dto: ProcessDetectionInputDTO) -> SecurityEventDTO:
         # 1. Build domain value objects from the input DTO.
@@ -74,28 +69,14 @@ class ProcessDetectionUseCase:
         )
         event.mark_analyzing()
 
-        # 4. Enrich with an LLM-generated incident summary (infra via port).
-        labels = ", ".join(sorted({d.label for d in detections}))
-        summary = await self._llm.summarize_incident(
-            prompt=(
-                f"Camera {dto.camera_id} detected: {labels}. "
-                f"Threat level: {threat_level}. "
-                f"Armed zone: {dto.is_armed_zone}. "
-                "Write a one-sentence incident summary for a security operator."
-            )
-        )
-        event.description = summary or event.description
-
-        # 5. Escalate if the domain says we must.
-        if event.requires_human_escalation():
-            event.mark_alerting()
-            voice_message = await self._voice.synthesize(
-                f"Open Guard alert. {summary}"
-            )
-            await self._telephony.place_call(self._on_call_number, voice_message)
-
-        # 6. Persist and publish.
+        # 4. Persist immediately so the event is durable before any slow work.
         await self._repository.save(event)
         result = SecurityEventMapper.to_dto(event)
         await self._publisher.publish_event(result)
+
+        # 5. Offload escalation (LLM + voice + call) to the background worker
+        #    when the domain decides a human must be alerted.
+        if event.requires_human_escalation():
+            self._task_queue.enqueue_escalation(event.id)
+
         return result

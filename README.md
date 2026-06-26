@@ -4,22 +4,25 @@
 platform. It watches camera feeds with **OpenCV**, assesses threats, generates
 human-readable incident summaries with **Claude Haiku**, and escalates serious
 events to an on-call operator via **ElevenLabs** voice synthesis over a
-**Twilio** phone call. Live events stream to a **React** dashboard, with
-**Redis** providing fast persistence and real-time pub/sub.
+**Twilio** phone call. The slow escalation pipeline runs out-of-band on
+**Celery** workers so the request path stays fast. Live events stream to a
+**React** dashboard, with **Redis** providing fast persistence, pub/sub, and
+the Celery broker/result backend.
 
 ---
 
 ## Tech Stack
 
-| Concern              | Technology        |
-| -------------------- | ----------------- |
-| Backend language     | Python 3.11 (FastAPI) |
-| Frontend             | React + TypeScript (Vite) |
-| Vision / detection   | OpenCV            |
-| LLM reasoning        | Claude Haiku (Anthropic) |
-| Voice synthesis      | ElevenLabs        |
-| Telephony (calls/SMS)| Twilio            |
-| Persistence + pub/sub| Redis             |
+| Concern                  | Technology                    |
+| ------------------------ | ----------------------------- |
+| Backend language         | Python 3.11 (FastAPI)         |
+| Frontend                 | React + TypeScript (Vite)     |
+| Vision / detection       | OpenCV                        |
+| LLM reasoning            | Claude Haiku (Anthropic)      |
+| Voice synthesis          | ElevenLabs                    |
+| Telephony (calls/SMS)    | Twilio                        |
+| Background task queue    | Celery                        |
+| Persistence + pub/sub + broker | Redis                   |
 
 ---
 
@@ -40,8 +43,8 @@ infrastructure ─►  application  ──►  domain
 | ----- | ---- | -------------- | ---------- |
 | **Domain** | `src/domain/` | Entities, value objects, domain services, repository **interfaces**. Pure business rules. | Nothing outside itself |
 | **Application** | `src/application/` | Use cases (`execute(dto)`), DTOs, mappers, and **port** interfaces for infrastructure. Orchestration only. | `domain` |
-| **Infrastructure** | `src/infrastructure/` | Concrete implementations: Redis, Claude Haiku, ElevenLabs, Twilio, OpenCV, config. | `domain`, `application` |
-| **Interfaces** | `src/interfaces/` | Entry points: FastAPI controllers, CLI, the monitoring agent. Thin adapters. | `application` |
+| **Infrastructure** | `src/infrastructure/` | Concrete implementations: Redis, Celery, Claude Haiku, ElevenLabs, Twilio, OpenCV, config. | `domain`, `application` |
+| **Interfaces** | `src/interfaces/` | Entry points: FastAPI controllers, CLI, the monitoring agent, the Celery worker. Thin adapters. | `application` |
 
 The **dependency rule is absolute**:
 
@@ -57,7 +60,8 @@ The **dependency rule is absolute**:
 
 ```
 src/
-├── main.py                              # Composition root (wires all layers)
+├── main.py                              # Composition root for the API (wires all layers)
+├── worker.py                            # Composition root for the Celery worker
 ├── domain/
 │   ├── entities/security_event.py       # Entity w/ invariants + lifecycle
 │   ├── value_objects/threat_level.py    # Immutable value object
@@ -65,10 +69,12 @@ src/
 │   ├── services/threat_assessment_service.py  # Pure business logic
 │   └── repositories/security_event_repository.py  # Interface (the "what")
 ├── application/
-│   ├── use_cases/process_detection_use_case.py    # execute(dto)
+│   ├── use_cases/process_detection_use_case.py    # execute(dto) — fast path
+│   ├── use_cases/escalate_event_use_case.py       # slow path (runs on worker)
 │   ├── use_cases/acknowledge_event_use_case.py
 │   ├── ports/llm_port.py                # Abstraction for Claude Haiku
 │   ├── ports/notification_port.py       # Abstractions for ElevenLabs + Twilio
+│   ├── ports/task_queue_port.py         # Abstraction for Celery
 │   └── dtos/detection_dtos.py
 ├── infrastructure/
 │   ├── persistence/redis_security_event_repository.py  # implements domain interface
@@ -76,16 +82,34 @@ src/
 │   ├── voice/elevenlabs_voice_client.py
 │   ├── telephony/twilio_telephony_client.py
 │   ├── vision/opencv_detector.py
+│   ├── tasks/celery_app.py              # Celery app (Redis broker/backend)
+│   ├── tasks/celery_task_queue.py       # implements TaskQueuePort
+│   ├── tasks/escalation_tasks.py        # Celery tasks → run use cases
 │   └── container.py                     # DI container
 └── interfaces/
     ├── http/app.py + controllers/       # FastAPI controllers (call use cases)
     ├── agent/guard_agent.py             # Live monitoring loop
+    ├── worker/celery_worker.py          # Celery worker interface adapter
     └── cli/run_agent.py                 # CLI entry point
 ```
 
-The **composition root** (`src/main.py`) is the single place permitted to know
-about every layer — it builds the infrastructure `Container` and injects use
-cases into the interface controllers.
+The **composition roots** (`src/main.py` for the API, `src/worker.py` for the
+Celery worker) are the only modules permitted to know about every layer — they
+build the infrastructure `Container` and wire concrete adapters into use cases.
+
+### Request flow
+
+1. A detection arrives (`POST /api/events` or the live OpenCV agent).
+2. `ProcessDetectionUseCase` assesses the threat (domain), **persists** the
+   event to Redis, and **publishes** it — fast, synchronous path.
+3. If the domain says the threat requires human escalation, the use case
+   **enqueues** an escalation job via the `TaskQueuePort` (Celery).
+4. A **Celery worker** picks up the job and runs `EscalateEventUseCase`:
+   Claude Haiku writes a summary → ElevenLabs synthesizes voice → Twilio places
+   the call. The event is re-persisted and re-published.
+
+Because the heavy I/O runs on the worker, the API/agent never blocks on the
+LLM, TTS, or telephony providers.
 
 ---
 
@@ -115,7 +139,17 @@ make run              # uvicorn src.main:app --reload  -> http://localhost:8000
 
 API docs are available at `http://localhost:8000/docs`.
 
-### 3. Frontend
+### 3. Celery worker (required for escalation)
+
+In a separate terminal (with Redis running):
+
+```bash
+make worker
+# or:
+celery -A src.worker:celery_app worker --loglevel=info
+```
+
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -123,7 +157,7 @@ npm install
 npm run dev           # -> http://localhost:5173 (proxies /api to :8000)
 ```
 
-### 4. Run the live monitoring agent (optional)
+### 5. Run the live monitoring agent (optional)
 
 ```bash
 make agent
@@ -136,6 +170,8 @@ python -m src.interfaces.cli.run_agent --camera-id front-door --source 0
 ```bash
 docker compose up --build
 ```
+
+This brings up Redis, the API, and the Celery worker together.
 
 ---
 
@@ -163,8 +199,9 @@ curl -X POST http://localhost:8000/api/events \
       }'
 ```
 
-A high/critical threat will be persisted to Redis, summarized by Claude Haiku,
-synthesized to voice by ElevenLabs, and escalated via a Twilio call.
+A high/critical threat is persisted to Redis immediately, then a Celery worker
+summarizes it with Claude Haiku, synthesizes voice via ElevenLabs, and
+escalates via a Twilio call.
 
 ---
 
@@ -177,7 +214,8 @@ make format   # black + ruff --fix
 ```
 
 Domain and application layers are tested in isolation using in-memory fakes for
-all ports — no Redis/Twilio/Anthropic credentials required to run the suite.
+all ports — including the Celery task queue — so no Redis/Twilio/Anthropic
+credentials are required to run the suite.
 
 ---
 

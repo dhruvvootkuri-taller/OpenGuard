@@ -1,6 +1,8 @@
 """Application test using in-memory fakes for all ports.
 
-Demonstrates that the use case depends only on abstractions.
+Demonstrates that the use case depends only on abstractions. The detection
+fast-path persists + publishes the event and enqueues escalation onto the
+(faked) task queue when the domain decides a human must be alerted.
 """
 
 import pytest
@@ -10,12 +12,7 @@ from src.application.dtos.detection_dtos import (
     ProcessDetectionInputDTO,
 )
 from src.application.ports.event_publisher_port import EventPublisherPort
-from src.application.ports.llm_port import LLMPort
-from src.application.ports.notification_port import (
-    TelephonyPort,
-    VoiceMessage,
-    VoiceSynthesisPort,
-)
+from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.use_cases.process_detection_use_case import (
     ProcessDetectionUseCase,
 )
@@ -40,28 +37,6 @@ class InMemoryRepo(SecurityEventRepository):
         return list(self.items.values())[:limit]
 
 
-class FakeLLM(LLMPort):
-    async def summarize_incident(self, prompt: str) -> str:
-        return "Intruder detected at the loading dock."
-
-
-class FakeVoice(VoiceSynthesisPort):
-    async def synthesize(self, text: str) -> VoiceMessage:
-        return VoiceMessage(text=text, audio_url="data:audio/mpeg;base64,AAAA")
-
-
-class FakeTelephony(TelephonyPort):
-    def __init__(self):
-        self.calls: list[str] = []
-
-    async def place_call(self, to_number: str, message: VoiceMessage) -> str:
-        self.calls.append(to_number)
-        return "call-sid"
-
-    async def send_sms(self, to_number: str, body: str) -> str:
-        return "msg-sid"
-
-
 class FakePublisher(EventPublisherPort):
     def __init__(self):
         self.published = []
@@ -70,21 +45,30 @@ class FakePublisher(EventPublisherPort):
         self.published.append(event)
 
 
-@pytest.mark.asyncio
-async def test_high_threat_triggers_call():
-    repo = InMemoryRepo()
-    telephony = FakeTelephony()
-    publisher = FakePublisher()
+class FakeTaskQueue(TaskQueuePort):
+    def __init__(self):
+        self.enqueued: list[str] = []
 
-    use_case = ProcessDetectionUseCase(
+    def enqueue_escalation(self, event_id: str) -> str:
+        self.enqueued.append(event_id)
+        return "task-id"
+
+
+def _build_use_case(repo, publisher, queue) -> ProcessDetectionUseCase:
+    return ProcessDetectionUseCase(
         repository=repo,
         threat_service=ThreatAssessmentService(),
-        llm=FakeLLM(),
-        voice=FakeVoice(),
-        telephony=telephony,
         publisher=publisher,
-        on_call_number="+15555550199",
+        task_queue=queue,
     )
+
+
+@pytest.mark.asyncio
+async def test_high_threat_enqueues_escalation():
+    repo = InMemoryRepo()
+    publisher = FakePublisher()
+    queue = FakeTaskQueue()
+    use_case = _build_use_case(repo, publisher, queue)
 
     result = await use_case.execute(
         ProcessDetectionInputDTO(
@@ -100,6 +84,31 @@ async def test_high_threat_triggers_call():
     )
 
     assert result.escalated is True
-    assert telephony.calls == ["+15555550199"]
+    assert queue.enqueued == [result.id]
     assert len(publisher.published) == 1
-    assert result.description == "Intruder detected at the loading dock."
+    assert result.id in repo.items
+
+
+@pytest.mark.asyncio
+async def test_low_threat_does_not_enqueue_escalation():
+    repo = InMemoryRepo()
+    publisher = FakePublisher()
+    queue = FakeTaskQueue()
+    use_case = _build_use_case(repo, publisher, queue)
+
+    result = await use_case.execute(
+        ProcessDetectionInputDTO(
+            camera_id="cam-1",
+            detections=[
+                DetectionBoxDTO(
+                    label="cat", confidence=0.4, x=0.1, y=0.1,
+                    width=0.05, height=0.05,
+                )
+            ],
+            is_armed_zone=False,
+        )
+    )
+
+    assert result.escalated is False
+    assert queue.enqueued == []
+    assert len(publisher.published) == 1

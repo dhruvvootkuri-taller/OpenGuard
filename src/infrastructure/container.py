@@ -14,6 +14,9 @@ import redis.asyncio as redis
 from src.application.use_cases.acknowledge_event_use_case import (
     AcknowledgeEventUseCase,
 )
+from src.application.use_cases.escalate_event_use_case import (
+    EscalateEventUseCase,
+)
 from src.application.use_cases.list_recent_events_use_case import (
     ListRecentEventsUseCase,
 )
@@ -27,6 +30,8 @@ from src.infrastructure.messaging.redis_event_publisher import RedisEventPublish
 from src.infrastructure.persistence.redis_security_event_repository import (
     RedisSecurityEventRepository,
 )
+from src.infrastructure.tasks.celery_app import create_celery_app
+from src.infrastructure.tasks.celery_task_queue import CeleryTaskQueue
 from src.infrastructure.telephony.twilio_telephony_client import (
     TwilioTelephonyClient,
 )
@@ -77,12 +82,27 @@ class Container:
             from_number=self.settings.twilio_from_number,
         )
 
+    @cached_property
+    def celery_app(self):
+        return create_celery_app(self.settings)
+
+    @cached_property
+    def task_queue(self) -> CeleryTaskQueue:
+        return CeleryTaskQueue(self.celery_app)
+
     # --- use cases --------------------------------------------------------
 
     def process_detection_use_case(self) -> ProcessDetectionUseCase:
         return ProcessDetectionUseCase(
             repository=self.repository,
             threat_service=self.threat_service,
+            publisher=self.publisher,
+            task_queue=self.task_queue,
+        )
+
+    def escalate_event_use_case(self) -> EscalateEventUseCase:
+        return EscalateEventUseCase(
+            repository=self.repository,
             llm=self.llm,
             voice=self.voice,
             telephony=self.telephony,
