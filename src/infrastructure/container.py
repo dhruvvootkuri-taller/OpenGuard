@@ -42,11 +42,17 @@ from src.domain.services.threat_assessment_service import ThreatAssessmentServic
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.llm.claude_haiku_client import ClaudeHaikuClient
 from src.infrastructure.messaging.redis_event_publisher import RedisEventPublisher
+from src.infrastructure.persistence.redis_active_emergency_tracker import (
+    RedisActiveEmergencyTracker,
+)
 from src.infrastructure.persistence.redis_call_record_repository import (
     RedisCallRecordRepository,
 )
 from src.infrastructure.persistence.redis_emergency_service_repository import (
     RedisEmergencyServiceRepository,
+)
+from src.infrastructure.persistence.in_memory_detection_confirmation_tracker import (
+    InMemoryDetectionConfirmationTracker,
 )
 from src.infrastructure.persistence.redis_feed_clip_repository import (
     RedisFeedClipRepository,
@@ -93,12 +99,26 @@ class Container:
         return RedisCallRecordRepository(self.redis)
 
     @cached_property
+    def active_emergency_tracker(self) -> RedisActiveEmergencyTracker:
+        return RedisActiveEmergencyTracker(
+            self.redis,
+            window_seconds=self.settings.emergency_dedup_window_seconds,
+        )
+
+    @cached_property
     def publisher(self) -> RedisEventPublisher:
         return RedisEventPublisher(self.redis)
 
     @cached_property
     def threat_service(self) -> ThreatAssessmentService:
         return ThreatAssessmentService()
+
+    @cached_property
+    def detection_confirmation(self) -> InMemoryDetectionConfirmationTracker:
+        return InMemoryDetectionConfirmationTracker(
+            window=self.settings.detection_confirmation_window,
+            required=self.settings.detection_confirmation_required,
+        )
 
     @cached_property
     def llm(self) -> ClaudeHaikuClient:
@@ -153,6 +173,7 @@ class Container:
             threat_service=self.threat_service,
             publisher=self.publisher,
             task_queue=self.task_queue,
+            active_tracker=self.active_emergency_tracker,
         )
 
     def analyze_feed_frame_use_case(self) -> AnalyzeFeedFrameUseCase:
@@ -162,6 +183,10 @@ class Container:
             threat_service=self.threat_service,
             publisher=self.publisher,
             task_queue=self.task_queue,
+            confirmation=self.detection_confirmation,
+            min_confidence=self.settings.detection_min_confidence,
+            min_threat_score=self.settings.detection_min_threat_score,
+            active_tracker=self.active_emergency_tracker,
         )
 
     def escalate_event_use_case(self) -> EscalateEventUseCase:
@@ -181,7 +206,10 @@ class Container:
         )
 
     def acknowledge_event_use_case(self) -> AcknowledgeEventUseCase:
-        return AcknowledgeEventUseCase(repository=self.repository)
+        return AcknowledgeEventUseCase(
+            repository=self.repository,
+            active_tracker=self.active_emergency_tracker,
+        )
 
     def resolve_event_use_case(self) -> ResolveEventUseCase:
         return ResolveEventUseCase(repository=self.repository)

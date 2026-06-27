@@ -83,8 +83,14 @@ class AnalyzeFrameInputDTO:
 class AnalyzeFrameOutputDTO:
     """Output contract for a single analysed frame.
 
-    ``event`` is populated only when the vision model confirms an emergency
-    and a SecurityEvent was created; otherwise it is ``None``.
+    ``event`` is populated only when the vision model flagged an emergency that
+    *cleared the confidence/threat thresholds AND was confirmed across the
+    multi-frame window*; otherwise it is ``None``.
+
+    ``is_candidate`` is ``True`` when the model flagged something but it was
+    gated out (below threshold or not yet confirmed). A candidate is a
+    low-severity "watch this" signal for the UI — it never creates an event and
+    never places a call. ``candidate_reason`` explains why it was gated.
     """
 
     camera_id: str
@@ -92,3 +98,5 @@ class AnalyzeFrameOutputDTO:
     label: str
     summary: str
     event: Optional[SecurityEventDTO] = None
+    is_candidate: bool = False
+    candidate_reason: str = ""

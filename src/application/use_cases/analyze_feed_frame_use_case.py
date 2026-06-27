@@ -1,18 +1,3 @@
-"""Use Case: Analyze a single MP4 camera-feed frame.
-
-Frames arrive one at a time as a simulated live feed plays in the browser.
-Each frame is assessed *independently and in real time* — we never wait for
-the whole clip. The "is this an emergency?" verdict is delegated to the
-``VisionAnalyzerPort`` (Claude vision underneath). Only when an emergency is
-confirmed do we create, persist, publish and possibly escalate a
-``SecurityEvent``.
-
-Severity remains a domain decision: the vision model's threat score is fed
-through ``ThreatAssessmentService`` / ``ThreatLevel.from_score`` and we take
-the **max** of the score-derived severity and any severity implied by the
-flagged detection box, so a confidently-flagged weapon is never under-rated.
-"""
-
 from __future__ import annotations
 
 from src.application.dtos.detection_dtos import (
@@ -20,6 +5,12 @@ from src.application.dtos.detection_dtos import (
     AnalyzeFrameOutputDTO,
 )
 from src.application.mappers.security_event_mapper import SecurityEventMapper
+from src.application.ports.detection_confirmation_port import (
+    DetectionConfirmationPort,
+)
+from src.application.ports.active_emergency_tracker_port import (
+    ActiveEmergencyTrackerPort,
+)
 from src.application.ports.event_publisher_port import EventPublisherPort
 from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.ports.vision_analyzer_port import VisionAnalyzerPort
@@ -42,12 +33,20 @@ class AnalyzeFeedFrameUseCase:
         threat_service: ThreatAssessmentService,
         publisher: EventPublisherPort,
         task_queue: TaskQueuePort,
+        confirmation: DetectionConfirmationPort,
+        active_tracker: ActiveEmergencyTrackerPort,
+        min_confidence: float = 0.6,
+        min_threat_score: float = 0.4,
     ) -> None:
         self._vision = vision_analyzer
         self._repository = repository
         self._threat_service = threat_service
         self._publisher = publisher
         self._task_queue = task_queue
+        self._confirmation = confirmation
+        self._active_tracker = active_tracker
+        self._min_confidence = min_confidence
+        self._min_threat_score = min_threat_score
 
     async def execute(self, dto: AnalyzeFrameInputDTO) -> AnalyzeFrameOutputDTO:
         # 1. Delegate the emergency verdict to the vision model. A provider
@@ -68,6 +67,50 @@ class AnalyzeFeedFrameUseCase:
                 label=assessment.label,
                 summary=assessment.summary,
                 event=None,
+            )
+
+        # 2a. THRESHOLD GATE. A single ambiguous frame must clear BOTH the
+        #     confidence and threat-score minimums before it counts. A weaker
+        #     flag is a low-severity *candidate* only — no event, no call.
+        if (
+            assessment.confidence < self._min_confidence
+            or assessment.threat_score < self._min_threat_score
+        ):
+            return AnalyzeFrameOutputDTO(
+                camera_id=dto.camera_id,
+                is_emergency=False,
+                label=assessment.label,
+                summary=assessment.summary,
+                event=None,
+                is_candidate=True,
+                candidate_reason=(
+                    "below threshold "
+                    f"(confidence {assessment.confidence:.2f} < "
+                    f"{self._min_confidence:.2f} or "
+                    f"threat_score {assessment.threat_score:.2f} < "
+                    f"{self._min_threat_score:.2f})"
+                ),
+            )
+
+        # 2b. CONFIRMATION GATE. Record this above-threshold hit and require the
+        #     same emergency to persist across the window before we treat it as
+        #     real. Until confirmed it stays a candidate — never an event/call.
+        confirmed = self._confirmation.record_and_check(
+            camera_id=dto.camera_id, label=assessment.label
+        )
+        if not confirmed:
+            return AnalyzeFrameOutputDTO(
+                camera_id=dto.camera_id,
+                is_emergency=False,
+                label=assessment.label,
+                summary=assessment.summary,
+                event=None,
+                is_candidate=True,
+                candidate_reason=(
+                    "awaiting multi-frame confirmation "
+                    f"({assessment.label!r} not yet sustained on "
+                    f"{dto.camera_id})"
+                ),
             )
 
         # 3. Build the detection box(es) the model flagged. Fall back to a
@@ -94,6 +137,26 @@ class AnalyzeFeedFrameUseCase:
             (score_level, domain_level), key=lambda level: level.severity
         )
 
+        # 4b. De-duplicate ongoing incidents. If this camera already has an
+        #     active, unacknowledged emergency within the cooldown window, the
+        #     repeated frame is part of the SAME incident: refresh its cooldown
+        #     and return the existing event WITHOUT creating a new event or
+        #     re-enqueuing an escalation call.
+        active = await self._active_tracker.get_active(dto.camera_id)
+        if active is not None:
+            existing = await self._repository.get_by_id(active.event_id)
+            if existing is not None:
+                await self._active_tracker.touch(dto.camera_id)
+                return AnalyzeFrameOutputDTO(
+                    camera_id=dto.camera_id,
+                    is_emergency=True,
+                    label=assessment.label,
+                    summary=assessment.summary,
+                    event=SecurityEventMapper.to_dto(existing),
+                )
+            # Pointer is stale (event gone) -> fall through to a new incident.
+            await self._active_tracker.clear(dto.camera_id)
+
         # 5. Create + persist the event before any slow escalation work.
         event = SecurityEvent(
             camera_id=dto.camera_id,
@@ -106,9 +169,17 @@ class AnalyzeFeedFrameUseCase:
         event_dto = SecurityEventMapper.to_dto(event)
         await self._publisher.publish_event(event_dto)
 
+        # 5b. Register this event as the camera's active incident so subsequent
+        #     frames of the same incident de-duplicate against it.
+        await self._active_tracker.mark_active(dto.camera_id, event.id)
+
         # 6. Offload escalation when the domain decides a human must be alerted.
         if event.requires_human_escalation():
             self._task_queue.enqueue_escalation(event.id)
+
+        # 7. Clear the confirmation window now an event exists for this camera,
+        #    so a future incident must independently re-confirm.
+        self._confirmation.reset(dto.camera_id)
 
         return AnalyzeFrameOutputDTO(
             camera_id=dto.camera_id,

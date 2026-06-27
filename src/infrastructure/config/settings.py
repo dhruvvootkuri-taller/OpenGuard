@@ -49,6 +49,16 @@ class Settings:
     # auto-resolved so the dashboard reflects current activity, not a backlog.
     event_inactivity_ttl_seconds: int
 
+    # Detection gating (cut false alarms on the stochastic MP4 vision feed)
+    detection_min_confidence: float
+    detection_min_threat_score: float
+    detection_confirmation_window: int
+    detection_confirmation_required: int
+
+    # Emergency de-duplication: collapse repeated emergency frames from the
+    # same camera into a single incident for this many seconds (cooldown).
+    emergency_dedup_window_seconds: int
+
     # App
     app_host: str
     app_port: int
@@ -81,6 +91,24 @@ class Settings:
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
             event_inactivity_ttl_seconds=int(
                 os.getenv("EVENT_INACTIVITY_TTL_SECONDS", "300")
+            ),
+            # Detection gating: a flagged frame must clear BOTH thresholds to
+            # count, and the same emergency must recur across the confirmation
+            # window before it becomes an event/escalation.
+            detection_min_confidence=float(
+                os.getenv("DETECTION_MIN_CONFIDENCE", "0.6")
+            ),
+            detection_min_threat_score=float(
+                os.getenv("DETECTION_MIN_THREAT_SCORE", "0.4")
+            ),
+            detection_confirmation_window=int(
+                os.getenv("DETECTION_CONFIRMATION_WINDOW", "3")
+            ),
+            detection_confirmation_required=int(
+                os.getenv("DETECTION_CONFIRMATION_REQUIRED", "2")
+            ),
+            emergency_dedup_window_seconds=int(
+                os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
             ),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),

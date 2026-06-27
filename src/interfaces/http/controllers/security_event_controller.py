@@ -149,6 +149,8 @@ class SecurityEventController:
             label=result.label,
             summary=result.summary,
             event=event,
+            is_candidate=result.is_candidate,
+            candidate_reason=result.candidate_reason,
         )
 
     async def list_events(self, limit: int = 50) -> list[SecurityEventResponse]:

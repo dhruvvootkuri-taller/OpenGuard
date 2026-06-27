@@ -13,6 +13,34 @@ const FRAME_INTERVAL_MS = 5000;
 const CAPTURE_WIDTH = 640;
 const JPEG_QUALITY = 0.7;
 
+/** Pixel rect (relative to the bezel) of the actually-displayed video content. */
+interface ContentRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Compute the rect of the displayed video content inside its element,
+ * accounting for `object-fit: contain` letterbox/pillarbox padding.
+ * Returns null until the element has both intrinsic and layout dimensions.
+ */
+function computeContentRect(video: HTMLVideoElement): ContentRect | null {
+  const { videoWidth, videoHeight, clientWidth, clientHeight } = video;
+  if (!videoWidth || !videoHeight || !clientWidth || !clientHeight) return null;
+  // `contain` scales to fit while preserving aspect ratio.
+  const scale = Math.min(clientWidth / videoWidth, clientHeight / videoHeight);
+  const width = videoWidth * scale;
+  const height = videoHeight * scale;
+  return {
+    left: (clientWidth - width) / 2,
+    top: (clientHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 /**
  * Capture the current frame of a playing <video> as a base64 JPEG.
  * Returns the raw base64 payload (no `data:` prefix) the backend expects,
@@ -43,7 +71,26 @@ export function VideoMonitor({ feed, onEvent }: Props) {
   const [boxes, setBoxes] = useState<DetectionBox[]>([]);
   const [status, setStatus] = useState<string>('idle');
   const [lastError, setLastError] = useState<string | null>(null);
+  const [contentRect, setContentRect] = useState<ContentRect | null>(null);
   const inFlight = useRef(false);
+
+  // Recompute the displayed video content rect whenever the element resizes
+  // or the clip's intrinsic dimensions become known, so boxes track the
+  // letterboxed/pillarboxed image precisely regardless of aspect ratio.
+  const refreshContentRect = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    setContentRect(computeContentRect(video));
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !sourceUrl) return undefined;
+    refreshContentRect();
+    const observer = new ResizeObserver(() => refreshContentRect());
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, [sourceUrl, refreshContentRect]);
 
   // Revoke object URLs to avoid leaks when the source changes / unmounts.
   useEffect(() => {
@@ -123,27 +170,45 @@ export function VideoMonitor({ feed, onEvent }: Props) {
               muted
               playsInline
               crossOrigin="anonymous"
-              onPlay={() => setPlaying(true)}
+              onLoadedMetadata={refreshContentRect}
+              onPlay={() => {
+                setPlaying(true);
+                refreshContentRect();
+              }}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}
             />
             <div className="monitor__scanline" aria-hidden />
-            {boxes.map((box, i) => (
+            {/* Overlay sized to the displayed (letterboxed) video content so
+                normalized box coords land on the actual image, not the bezel. */}
+            {contentRect && boxes.length > 0 && (
               <div
-                key={i}
-                className="monitor__box"
+                className="monitor__overlay"
                 style={{
-                  left: `${box.x * 100}%`,
-                  top: `${box.y * 100}%`,
-                  width: `${box.width * 100}%`,
-                  height: `${box.height * 100}%`,
+                  left: `${contentRect.left}px`,
+                  top: `${contentRect.top}px`,
+                  width: `${contentRect.width}px`,
+                  height: `${contentRect.height}px`,
                 }}
               >
-                <span className="monitor__box-label">
-                  {box.label} {(box.confidence * 100).toFixed(0)}%
-                </span>
+                {boxes.map((box, i) => (
+                  <div
+                    key={i}
+                    className="monitor__box"
+                    style={{
+                      left: `${box.x * 100}%`,
+                      top: `${box.y * 100}%`,
+                      width: `${box.width * 100}%`,
+                      height: `${box.height * 100}%`,
+                    }}
+                  >
+                    <span className="monitor__box-label">
+                      {box.label} {(box.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </>
         ) : (
           <label className="monitor__dropzone">
