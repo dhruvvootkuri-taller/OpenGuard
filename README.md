@@ -220,7 +220,7 @@ nothing is persisted — playback is never interrupted.
 | Variable                 | Purpose                                              |
 | ------------------------ | ---------------------------------------------------- |
 | `ANTHROPIC_API_KEY`      | Anthropic key used for both Haiku and vision         |
-| `ANTHROPIC_VISION_MODEL` | Vision model for frame analysis. **Defaults to `claude-3-5-sonnet-latest`** — must be a *current* model (the old `claude-3-5-sonnet-20241022` was retired 2025-10-28 and 404s every frame) |
+| `ANTHROPIC_VISION_MODEL` | Vision model for frame analysis. **Defaults to `claude-opus-4-8`** — must be a *current* model; the retired `claude-3-5-sonnet-*` family (including the `-latest` alias) 404s on every frame |
 | `REDIS_URL`              | Redis connection (persistence + pub/sub)             |
 
 > A bad API key or retired model is **logged and surfaced as HTTP 502** by the

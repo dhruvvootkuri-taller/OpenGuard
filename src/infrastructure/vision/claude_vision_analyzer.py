@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # A current, non-retired Claude vision model. The previous default
 # (claude-3-5-sonnet-20241022) was retired 2025-10-28 and every frame 404'd.
-DEFAULT_VISION_MODEL = "claude-3-5-sonnet-latest"
+DEFAULT_VISION_MODEL = "claude-opus-4-8"
 
 _SYSTEM_PROMPT = (
     "You are Open Guard, a security vision analyst. You are shown a single "
