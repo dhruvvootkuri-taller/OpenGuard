@@ -5,6 +5,8 @@ Schema validation lives here; business rules are enforced in the domain.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -36,14 +38,14 @@ class EmergencyCallRequest(BaseModel):
     """
 
     description: str = Field(..., min_length=1)
-    to_number: str | None = None
-    first_message: str | None = None
+    to_number: Optional[str] = None
+    first_message: Optional[str] = None
 
 
 class EmergencyCallResponse(BaseModel):
     to_number: str
     provider_call_id: str
-    conversation_id: str | None = None
+    conversation_id: Optional[str] = None
 
 
 class DetectionBoxResponse(BaseModel):
@@ -65,3 +67,26 @@ class SecurityEventResponse(BaseModel):
     detected_at: str
     escalated: bool
     detections: list[DetectionBoxResponse]
+
+
+class AnalyzeFrameRequest(BaseModel):
+    """A single frame captured from a playing MP4 feed.
+
+    ``image_base64`` is raw base64-encoded JPEG bytes (no ``data:`` prefix).
+    """
+
+    image_base64: str = Field(..., min_length=1)
+    media_type: str = "image/jpeg"
+    is_armed_zone: bool = False
+    zone: str = ""
+
+
+class AnalyzeFrameResponse(BaseModel):
+    camera_id: str
+    is_emergency: bool
+    label: str
+    summary: str
+    # NOTE: use Optional[...] (never a quoted union + model_rebuild) so the
+    # schema resolves on Python 3.9 — a quoted "SecurityEventResponse | None"
+    # raises TypeError at model_rebuild() time there.
+    event: Optional[SecurityEventResponse] = None

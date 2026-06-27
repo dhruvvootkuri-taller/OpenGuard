@@ -7,6 +7,7 @@ output DTOs — never raw domain entities.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -48,3 +49,32 @@ class SecurityEventDTO:
 class AcknowledgeEventInputDTO:
     event_id: str
     operator_id: str
+
+
+@dataclass(frozen=True)
+class AnalyzeFrameInputDTO:
+    """Input contract for the AnalyzeFeedFrameUseCase.
+
+    ``image_base64`` is raw base64-encoded image bytes (no ``data:`` prefix).
+    """
+
+    camera_id: str
+    image_base64: str
+    media_type: str = "image/jpeg"
+    is_armed_zone: bool = False
+    zone: str = ""
+
+
+@dataclass(frozen=True)
+class AnalyzeFrameOutputDTO:
+    """Output contract for a single analysed frame.
+
+    ``event`` is populated only when the vision model confirms an emergency
+    and a SecurityEvent was created; otherwise it is ``None``.
+    """
+
+    camera_id: str
+    is_emergency: bool
+    label: str
+    summary: str
+    event: Optional[SecurityEventDTO] = None

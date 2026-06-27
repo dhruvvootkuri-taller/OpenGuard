@@ -14,6 +14,9 @@ import redis.asyncio as redis
 from src.application.use_cases.acknowledge_event_use_case import (
     AcknowledgeEventUseCase,
 )
+from src.application.use_cases.analyze_feed_frame_use_case import (
+    AnalyzeFeedFrameUseCase,
+)
 from src.application.use_cases.escalate_event_use_case import (
     EscalateEventUseCase,
 )
@@ -43,6 +46,7 @@ from src.infrastructure.persistence.redis_security_event_repository import (
     RedisSecurityEventRepository,
 )
 from src.infrastructure.tasks.celery_app import create_celery_app
+from src.infrastructure.vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 from src.infrastructure.tasks.celery_task_queue import CeleryTaskQueue
 from src.infrastructure.telephony.twilio_telephony_client import (
     TwilioTelephonyClient,
@@ -95,6 +99,13 @@ class Container:
         )
 
     @cached_property
+    def vision_analyzer(self) -> ClaudeVisionAnalyzer:
+        return ClaudeVisionAnalyzer(
+            api_key=self.settings.anthropic_api_key,
+            model=self.settings.anthropic_vision_model,
+        )
+
+    @cached_property
     def voice(self) -> ElevenLabsVoiceClient:
         return ElevenLabsVoiceClient(
             api_key=self.settings.elevenlabs_api_key,
@@ -129,6 +140,15 @@ class Container:
 
     def process_detection_use_case(self) -> ProcessDetectionUseCase:
         return ProcessDetectionUseCase(
+            repository=self.repository,
+            threat_service=self.threat_service,
+            publisher=self.publisher,
+            task_queue=self.task_queue,
+        )
+
+    def analyze_feed_frame_use_case(self) -> AnalyzeFeedFrameUseCase:
+        return AnalyzeFeedFrameUseCase(
+            vision_analyzer=self.vision_analyzer,
             repository=self.repository,
             threat_service=self.threat_service,
             publisher=self.publisher,

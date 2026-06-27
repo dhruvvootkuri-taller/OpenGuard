@@ -27,6 +27,25 @@ export interface ProcessDetectionRequest {
   description: string;
 }
 
+/** Payload accepted by POST /api/feeds/{camera_id}/frame. */
+export interface AnalyzeFrameRequest {
+  /** Raw base64-encoded JPEG bytes (no data: prefix). */
+  image_base64: string;
+  media_type: string;
+  is_armed_zone: boolean;
+  zone: string;
+}
+
+/** Response from POST /api/feeds/{camera_id}/frame. */
+export interface AnalyzeFrameResponse {
+  camera_id: string;
+  is_emergency: boolean;
+  label: string;
+  summary: string;
+  /** Populated only when an emergency was confirmed. */
+  event: SecurityEvent | null;
+}
+
 /** A single monitor on the video wall. */
 export interface MonitorFeed {
   /** Stable slot id, e.g. "CAM-01". */

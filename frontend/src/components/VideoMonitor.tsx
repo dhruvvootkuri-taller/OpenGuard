@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { processDetection } from '../api/eventsApi';
+import { analyzeFrame } from '../api/eventsApi';
 import type { DetectionBox, MonitorFeed, SecurityEvent } from '../types';
 
 interface Props {
@@ -8,49 +8,31 @@ interface Props {
   onEvent: (event: SecurityEvent) => void;
 }
 
+/** How often we grab a frame from the playing clip and send it for analysis. */
+const FRAME_INTERVAL_MS = 5000;
+const CAPTURE_WIDTH = 640;
+const JPEG_QUALITY = 0.7;
+
 /**
- * Catalogue of objects the (mock) vision model can "detect" while a clip
- * plays. The backend assesses each one; armed zones + dangerous labels are
- * what trigger high/critical escalations.
+ * Capture the current frame of a playing <video> as a base64 JPEG.
+ * Returns the raw base64 payload (no `data:` prefix) the backend expects,
+ * or null if the frame isn't ready yet.
  */
-const DETECTION_LABELS: ReadonlyArray<{ label: string; weight: number }> = [
-  { label: 'person', weight: 5 },
-  { label: 'vehicle', weight: 3 },
-  { label: 'backpack', weight: 2 },
-  { label: 'knife', weight: 1 },
-  { label: 'firearm', weight: 1 },
-  { label: 'crowd', weight: 1 },
-];
-
-function pickLabel(): string {
-  const pool: string[] = [];
-  for (const { label, weight } of DETECTION_LABELS) {
-    for (let i = 0; i < weight; i += 1) pool.push(label);
-  }
-  return pool[Math.floor(Math.random() * pool.length)];
+function captureFrame(video: HTMLVideoElement): string | null {
+  if (!video.videoWidth || !video.videoHeight) return null;
+  const scale = Math.min(1, CAPTURE_WIDTH / video.videoWidth);
+  const width = Math.round(video.videoWidth * scale);
+  const height = Math.round(video.videoHeight * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, width, height);
+  const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  const comma = dataUrl.indexOf(',');
+  return comma === -1 ? null : dataUrl.slice(comma + 1);
 }
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/** Build a randomized but schema-valid detection box (normalized 0..1). */
-function randomDetection(): DetectionBox {
-  const width = clamp(0.1 + Math.random() * 0.25, 0.05, 0.6);
-  const height = clamp(0.15 + Math.random() * 0.3, 0.05, 0.7);
-  const x = clamp(Math.random() * (1 - width), 0, 1 - width);
-  const y = clamp(Math.random() * (1 - height), 0, 1 - height);
-  return {
-    label: pickLabel(),
-    confidence: clamp(0.55 + Math.random() * 0.44, 0, 1),
-    x,
-    y,
-    width,
-    height,
-  };
-}
-
-const DETECTION_INTERVAL_MS = 7000;
 
 export function VideoMonitor({ feed, onEvent }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -59,7 +41,9 @@ export function VideoMonitor({ feed, onEvent }: Props) {
   const [playing, setPlaying] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   const [boxes, setBoxes] = useState<DetectionBox[]>([]);
+  const [status, setStatus] = useState<string>('idle');
   const [lastError, setLastError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   // Revoke object URLs to avoid leaks when the source changes / unmounts.
   useEffect(() => {
@@ -75,31 +59,45 @@ export function VideoMonitor({ feed, onEvent }: Props) {
     return () => clearInterval(t);
   }, [sourceUrl]);
 
-  const emitDetection = useCallback(async () => {
-    const detections = [randomDetection()];
-    setBoxes(detections);
+  const sendFrame = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || inFlight.current) return;
+    const image = captureFrame(video);
+    if (!image) return;
+    inFlight.current = true;
+    setStatus('analyzing');
     try {
-      const event = await processDetection({
-        camera_id: feed.id,
-        detections,
+      const result = await analyzeFrame(feed.id, {
+        image_base64: image,
+        media_type: 'image/jpeg',
         is_armed_zone: feed.armed,
-        description: `Auto-detection on ${feed.id} (${feed.zone})`,
+        zone: feed.zone,
       });
       setLastError(null);
-      onEvent(event);
+      if (result.is_emergency && result.event) {
+        setBoxes(result.event.detections);
+        setStatus(`⚠ ${result.label}`);
+        onEvent(result.event);
+      } else {
+        setBoxes([]);
+        setStatus('all clear');
+      }
     } catch (err) {
       setLastError((err as Error).message);
+      setStatus('error');
+    } finally {
+      inFlight.current = false;
     }
   }, [feed, onEvent]);
 
-  // While the clip is playing, periodically push detections to the backend.
+  // While the clip is playing, periodically capture + analyze a frame.
   useEffect(() => {
     if (!playing) return undefined;
     const t = setInterval(() => {
-      void emitDetection();
-    }, DETECTION_INTERVAL_MS);
+      void sendFrame();
+    }, FRAME_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [playing, emitDetection]);
+  }, [playing, sendFrame]);
 
   const handleFile = (file: File | undefined) => {
     if (!file) return;
@@ -109,6 +107,7 @@ export function VideoMonitor({ feed, onEvent }: Props) {
     setFileName(file.name);
     setBoxes([]);
     setLastError(null);
+    setStatus('idle');
   };
 
   return (
@@ -123,6 +122,7 @@ export function VideoMonitor({ feed, onEvent }: Props) {
               loop
               muted
               playsInline
+              crossOrigin="anonymous"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}
@@ -182,18 +182,14 @@ export function VideoMonitor({ feed, onEvent }: Props) {
 
       <div className="monitor__controls">
         <span className="monitor__status">
-          {sourceUrl
-            ? playing
-              ? 'Streaming · analyzing'
-              : 'Paused'
-            : 'No signal'}
+          {sourceUrl ? (playing ? `Streaming · ${status}` : 'Paused') : 'No signal'}
         </span>
         <div className="monitor__actions">
           {sourceUrl && (
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={() => void emitDetection()}
+              onClick={() => void sendFrame()}
             >
               Scan now
             </button>
