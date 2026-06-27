@@ -18,6 +18,9 @@ from src.application.ports.vision_analyzer_port import (
 from src.application.use_cases.analyze_feed_frame_use_case import (
     AnalyzeFeedFrameUseCase,
 )
+from src.infrastructure.persistence.in_memory_detection_confirmation_tracker import (
+    InMemoryDetectionConfirmationTracker,
+)
 from src.domain.entities.security_event import SecurityEvent
 from src.domain.repositories.security_event_repository import (
     SecurityEventRepository,
@@ -71,13 +74,26 @@ class StubVision(VisionAnalyzerPort):
         return self._assessment
 
 
-def _build(vision) -> AnalyzeFeedFrameUseCase:
+def _build(
+    vision,
+    *,
+    window=3,
+    required=1,
+    min_confidence=0.6,
+    min_threat_score=0.4,
+    task_queue=None,
+) -> AnalyzeFeedFrameUseCase:
     return AnalyzeFeedFrameUseCase(
         vision_analyzer=vision,
         repository=InMemoryRepo(),
         threat_service=ThreatAssessmentService(),
         publisher=FakePublisher(),
-        task_queue=FakeTaskQueue(),
+        task_queue=task_queue or FakeTaskQueue(),
+        confirmation=InMemoryDetectionConfirmationTracker(
+            window=window, required=required
+        ),
+        min_confidence=min_confidence,
+        min_threat_score=min_threat_score,
     )
 
 
@@ -133,3 +149,87 @@ async def test_provider_error_propagates_not_silent_all_clear():
 
     with pytest.raises(VisionAnalyzerError):
         await use_case.execute(_input())
+
+
+# --- false-alarm gating -------------------------------------------------------
+
+
+def _emergency(confidence=0.9, threat_score=0.92, label="weapon"):
+    return EmergencyAssessment(
+        is_emergency=True,
+        threat_score=threat_score,
+        confidence=confidence,
+        label=label,
+        summary="Person brandishing a knife.",
+        box=DetectionBox(
+            label=label, confidence=confidence, x=0.2, y=0.2, width=0.3, height=0.3
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_frame_is_candidate_not_event():
+    vision = StubVision(assessment=_emergency(confidence=0.3, threat_score=0.92))
+    use_case = _build(vision, min_confidence=0.6)
+
+    result = await use_case.execute(_input())
+
+    assert result.is_emergency is False
+    assert result.event is None
+    assert result.is_candidate is True
+    assert "below threshold" in result.candidate_reason
+
+
+@pytest.mark.asyncio
+async def test_low_threat_score_frame_is_candidate_not_event():
+    vision = StubVision(assessment=_emergency(confidence=0.9, threat_score=0.2))
+    use_case = _build(vision, min_threat_score=0.4)
+
+    result = await use_case.execute(_input())
+
+    assert result.is_emergency is False
+    assert result.event is None
+    assert result.is_candidate is True
+
+
+@pytest.mark.asyncio
+async def test_single_strong_frame_is_candidate_until_confirmed():
+    # window=3, required=2 -> one frame is not enough to escalate.
+    queue = FakeTaskQueue()
+    vision = StubVision(assessment=_emergency())
+    use_case = _build(vision, window=3, required=2, task_queue=queue)
+
+    first = await use_case.execute(_input())
+    assert first.is_emergency is False
+    assert first.event is None
+    assert first.is_candidate is True
+    assert "confirmation" in first.candidate_reason
+    assert queue.enqueued == []
+
+    # A second matching frame confirms the detection -> real event + escalation.
+    second = await use_case.execute(_input())
+    assert second.is_emergency is True
+    assert second.event is not None
+    assert queue.enqueued  # escalation enqueued exactly once it is confirmed
+
+
+@pytest.mark.asyncio
+async def test_isolated_one_frame_hit_never_confirms():
+    # An ordinary clip producing a single spurious 'fire' hit among other
+    # labels must never reach the confirmation threshold (2 of last 3).
+    queue = FakeTaskQueue()
+    fire = _emergency(label="fire")
+    smoke = _emergency(label="smoke")
+    # Distinct labels never accumulate 2 occurrences in the window.
+    vision = StubVision(assessment=fire)
+    use_case = _build(vision, window=3, required=2, task_queue=queue)
+
+    r1 = await use_case.execute(_input())
+    vision._assessment = smoke
+    r2 = await use_case.execute(_input())
+    vision._assessment = _emergency(label="person")
+    r3 = await use_case.execute(_input())
+
+    assert all(r.event is None for r in (r1, r2, r3))
+    assert all(r.is_candidate for r in (r1, r2, r3))
+    assert queue.enqueued == []

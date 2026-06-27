@@ -39,6 +39,9 @@ from src.infrastructure.persistence.redis_call_record_repository import (
 from src.infrastructure.persistence.redis_emergency_service_repository import (
     RedisEmergencyServiceRepository,
 )
+from src.infrastructure.persistence.in_memory_detection_confirmation_tracker import (
+    InMemoryDetectionConfirmationTracker,
+)
 from src.infrastructure.persistence.redis_feed_clip_repository import (
     RedisFeedClipRepository,
 )
@@ -90,6 +93,13 @@ class Container:
     @cached_property
     def threat_service(self) -> ThreatAssessmentService:
         return ThreatAssessmentService()
+
+    @cached_property
+    def detection_confirmation(self) -> InMemoryDetectionConfirmationTracker:
+        return InMemoryDetectionConfirmationTracker(
+            window=self.settings.detection_confirmation_window,
+            required=self.settings.detection_confirmation_required,
+        )
 
     @cached_property
     def llm(self) -> ClaudeHaikuClient:
@@ -153,6 +163,9 @@ class Container:
             threat_service=self.threat_service,
             publisher=self.publisher,
             task_queue=self.task_queue,
+            confirmation=self.detection_confirmation,
+            min_confidence=self.settings.detection_min_confidence,
+            min_threat_score=self.settings.detection_min_threat_score,
         )
 
     def escalate_event_use_case(self) -> EscalateEventUseCase:

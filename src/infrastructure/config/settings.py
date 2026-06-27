@@ -44,6 +44,12 @@ class Settings:
     twilio_from_number: str
     on_call_number: str
 
+    # Detection gating (cut false alarms on the stochastic MP4 vision feed)
+    detection_min_confidence: float
+    detection_min_threat_score: float
+    detection_confirmation_window: int
+    detection_confirmation_required: int
+
     # App
     app_host: str
     app_port: int
@@ -74,6 +80,21 @@ class Settings:
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
+            # Detection gating: a flagged frame must clear BOTH thresholds to
+            # count, and the same emergency must recur across the confirmation
+            # window before it becomes an event/escalation.
+            detection_min_confidence=float(
+                os.getenv("DETECTION_MIN_CONFIDENCE", "0.6")
+            ),
+            detection_min_threat_score=float(
+                os.getenv("DETECTION_MIN_THREAT_SCORE", "0.4")
+            ),
+            detection_confirmation_window=int(
+                os.getenv("DETECTION_CONFIRMATION_WINDOW", "3")
+            ),
+            detection_confirmation_required=int(
+                os.getenv("DETECTION_CONFIRMATION_REQUIRED", "2")
+            ),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
         )

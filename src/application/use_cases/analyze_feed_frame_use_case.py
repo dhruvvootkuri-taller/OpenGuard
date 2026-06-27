@@ -11,6 +11,18 @@ Severity remains a domain decision: the vision model's threat score is fed
 through ``ThreatAssessmentService`` / ``ThreatLevel.from_score`` and we take
 the **max** of the score-derived severity and any severity implied by the
 flagged detection box, so a confidently-flagged weapon is never under-rated.
+
+**False-alarm gating.** Vision verdicts on ambiguous frames are stochastic, so
+a single flagged frame is *not* trusted. Two gates run before anything becomes
+an event:
+
+  1. *Threshold gate* — the model's ``confidence`` and ``threat_score`` must
+     both clear configurable minimums. A weaker flag is surfaced as a
+     low-severity **candidate** only (never an event, never a call).
+  2. *Confirmation gate* — the same emergency label on the same camera must
+     recur across a confirmation window (M of the last K flagged frames) via
+     ``DetectionConfirmationPort`` before a ``SecurityEvent`` is created and
+     escalation is enqueued. Until then it stays a candidate.
 """
 
 from __future__ import annotations
@@ -20,6 +32,9 @@ from src.application.dtos.detection_dtos import (
     AnalyzeFrameOutputDTO,
 )
 from src.application.mappers.security_event_mapper import SecurityEventMapper
+from src.application.ports.detection_confirmation_port import (
+    DetectionConfirmationPort,
+)
 from src.application.ports.event_publisher_port import EventPublisherPort
 from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.ports.vision_analyzer_port import VisionAnalyzerPort
@@ -42,12 +57,18 @@ class AnalyzeFeedFrameUseCase:
         threat_service: ThreatAssessmentService,
         publisher: EventPublisherPort,
         task_queue: TaskQueuePort,
+        confirmation: DetectionConfirmationPort,
+        min_confidence: float = 0.6,
+        min_threat_score: float = 0.4,
     ) -> None:
         self._vision = vision_analyzer
         self._repository = repository
         self._threat_service = threat_service
         self._publisher = publisher
         self._task_queue = task_queue
+        self._confirmation = confirmation
+        self._min_confidence = min_confidence
+        self._min_threat_score = min_threat_score
 
     async def execute(self, dto: AnalyzeFrameInputDTO) -> AnalyzeFrameOutputDTO:
         # 1. Delegate the emergency verdict to the vision model. A provider
@@ -68,6 +89,50 @@ class AnalyzeFeedFrameUseCase:
                 label=assessment.label,
                 summary=assessment.summary,
                 event=None,
+            )
+
+        # 2a. THRESHOLD GATE. A single ambiguous frame must clear BOTH the
+        #     confidence and threat-score minimums before it counts. A weaker
+        #     flag is a low-severity *candidate* only — no event, no call.
+        if (
+            assessment.confidence < self._min_confidence
+            or assessment.threat_score < self._min_threat_score
+        ):
+            return AnalyzeFrameOutputDTO(
+                camera_id=dto.camera_id,
+                is_emergency=False,
+                label=assessment.label,
+                summary=assessment.summary,
+                event=None,
+                is_candidate=True,
+                candidate_reason=(
+                    "below threshold "
+                    f"(confidence {assessment.confidence:.2f} < "
+                    f"{self._min_confidence:.2f} or "
+                    f"threat_score {assessment.threat_score:.2f} < "
+                    f"{self._min_threat_score:.2f})"
+                ),
+            )
+
+        # 2b. CONFIRMATION GATE. Record this above-threshold hit and require the
+        #     same emergency to persist across the window before we treat it as
+        #     real. Until confirmed it stays a candidate — never an event/call.
+        confirmed = self._confirmation.record_and_check(
+            camera_id=dto.camera_id, label=assessment.label
+        )
+        if not confirmed:
+            return AnalyzeFrameOutputDTO(
+                camera_id=dto.camera_id,
+                is_emergency=False,
+                label=assessment.label,
+                summary=assessment.summary,
+                event=None,
+                is_candidate=True,
+                candidate_reason=(
+                    "awaiting multi-frame confirmation "
+                    f"({assessment.label!r} not yet sustained on "
+                    f"{dto.camera_id})"
+                ),
             )
 
         # 3. Build the detection box(es) the model flagged. Fall back to a
@@ -109,6 +174,10 @@ class AnalyzeFeedFrameUseCase:
         # 6. Offload escalation when the domain decides a human must be alerted.
         if event.requires_human_escalation():
             self._task_queue.enqueue_escalation(event.id)
+
+        # 7. Clear the confirmation window now an event exists for this camera,
+        #    so a future incident must independently re-confirm.
+        self._confirmation.reset(dto.camera_id)
 
         return AnalyzeFrameOutputDTO(
             camera_id=dto.camera_id,
