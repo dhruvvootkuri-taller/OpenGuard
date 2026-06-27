@@ -90,3 +90,8 @@ class AnalyzeFrameResponse(BaseModel):
     # schema resolves on Python 3.9 — a quoted "SecurityEventResponse | None"
     # raises TypeError at model_rebuild() time there.
     event: Optional[SecurityEventResponse] = None
+    # A candidate is a flagged-but-gated detection (below threshold or not yet
+    # confirmed across frames). The UI may show it as a low-severity watch
+    # signal; it never created an event and never placed a call.
+    is_candidate: bool = False
+    candidate_reason: str = ""
