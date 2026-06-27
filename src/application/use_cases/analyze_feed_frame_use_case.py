@@ -20,6 +20,9 @@ from src.application.dtos.detection_dtos import (
     AnalyzeFrameOutputDTO,
 )
 from src.application.mappers.security_event_mapper import SecurityEventMapper
+from src.application.ports.active_emergency_tracker_port import (
+    ActiveEmergencyTrackerPort,
+)
 from src.application.ports.event_publisher_port import EventPublisherPort
 from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.ports.vision_analyzer_port import VisionAnalyzerPort
@@ -42,12 +45,14 @@ class AnalyzeFeedFrameUseCase:
         threat_service: ThreatAssessmentService,
         publisher: EventPublisherPort,
         task_queue: TaskQueuePort,
+        active_tracker: ActiveEmergencyTrackerPort,
     ) -> None:
         self._vision = vision_analyzer
         self._repository = repository
         self._threat_service = threat_service
         self._publisher = publisher
         self._task_queue = task_queue
+        self._active_tracker = active_tracker
 
     async def execute(self, dto: AnalyzeFrameInputDTO) -> AnalyzeFrameOutputDTO:
         # 1. Delegate the emergency verdict to the vision model. A provider
@@ -94,6 +99,26 @@ class AnalyzeFeedFrameUseCase:
             (score_level, domain_level), key=lambda level: level.severity
         )
 
+        # 4b. De-duplicate ongoing incidents. If this camera already has an
+        #     active, unacknowledged emergency within the cooldown window, the
+        #     repeated frame is part of the SAME incident: refresh its cooldown
+        #     and return the existing event WITHOUT creating a new event or
+        #     re-enqueuing an escalation call.
+        active = await self._active_tracker.get_active(dto.camera_id)
+        if active is not None:
+            existing = await self._repository.get_by_id(active.event_id)
+            if existing is not None:
+                await self._active_tracker.touch(dto.camera_id)
+                return AnalyzeFrameOutputDTO(
+                    camera_id=dto.camera_id,
+                    is_emergency=True,
+                    label=assessment.label,
+                    summary=assessment.summary,
+                    event=SecurityEventMapper.to_dto(existing),
+                )
+            # Pointer is stale (event gone) -> fall through to a new incident.
+            await self._active_tracker.clear(dto.camera_id)
+
         # 5. Create + persist the event before any slow escalation work.
         event = SecurityEvent(
             camera_id=dto.camera_id,
@@ -105,6 +130,10 @@ class AnalyzeFeedFrameUseCase:
         await self._repository.save(event)
         event_dto = SecurityEventMapper.to_dto(event)
         await self._publisher.publish_event(event_dto)
+
+        # 5b. Register this event as the camera's active incident so subsequent
+        #     frames of the same incident de-duplicate against it.
+        await self._active_tracker.mark_active(dto.camera_id, event.id)
 
         # 6. Offload escalation when the domain decides a human must be alerted.
         if event.requires_human_escalation():

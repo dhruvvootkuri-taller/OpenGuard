@@ -44,6 +44,10 @@ class Settings:
     twilio_from_number: str
     on_call_number: str
 
+    # Emergency de-duplication: collapse repeated emergency frames from the
+    # same camera into a single incident for this many seconds (cooldown).
+    emergency_dedup_window_seconds: int
+
     # App
     app_host: str
     app_port: int
@@ -74,6 +78,9 @@ class Settings:
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
+            emergency_dedup_window_seconds=int(
+                os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
+            ),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
         )
