@@ -12,9 +12,15 @@ from fastapi import FastAPI
 from src.interfaces.http.controllers.security_event_controller import (
     SecurityEventController,
 )
+from src.interfaces.http.controllers.voice_agent_controller import (
+    VoiceAgentController,
+)
 
 
-def create_app(security_event_controller: SecurityEventController) -> FastAPI:
+def create_app(
+    security_event_controller: SecurityEventController,
+    voice_agent_controller: VoiceAgentController,
+) -> FastAPI:
     app = FastAPI(
         title="Open Guard API",
         description="AI-powered security monitoring & alerting",
@@ -26,4 +32,5 @@ def create_app(security_event_controller: SecurityEventController) -> FastAPI:
         return {"status": "ok", "service": "open-guard"}
 
     app.include_router(security_event_controller.router)
+    app.include_router(voice_agent_controller.router)
     return app

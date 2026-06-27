@@ -32,6 +32,9 @@ class Settings:
     # ElevenLabs
     elevenlabs_api_key: str
     elevenlabs_voice_id: str
+    # Conversational AI (interactive voice agent over Twilio)
+    elevenlabs_agent_id: str
+    elevenlabs_phone_number_id: str
 
     # Twilio
     twilio_account_sid: str
@@ -56,6 +59,10 @@ class Settings:
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "Rachel"),
+            elevenlabs_agent_id=os.getenv("ELEVENLABS_AGENT_ID", ""),
+            elevenlabs_phone_number_id=os.getenv(
+                "ELEVENLABS_PHONE_NUMBER_ID", ""
+            ),
             twilio_account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),

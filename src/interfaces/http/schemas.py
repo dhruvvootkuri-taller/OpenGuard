@@ -28,6 +28,24 @@ class AcknowledgeRequest(BaseModel):
     operator_id: str = Field(..., min_length=1)
 
 
+class EmergencyCallRequest(BaseModel):
+    """Request to place an interactive emergency-helpline call.
+
+    ``description`` is editable per call so different scenarios can be tested.
+    ``to_number`` defaults to the configured on-call number when omitted.
+    """
+
+    description: str = Field(..., min_length=1)
+    to_number: str | None = None
+    first_message: str | None = None
+
+
+class EmergencyCallResponse(BaseModel):
+    to_number: str
+    provider_call_id: str
+    conversation_id: str | None = None
+
+
 class DetectionBoxResponse(BaseModel):
     label: str
     confidence: float

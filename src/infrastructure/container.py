@@ -20,6 +20,9 @@ from src.application.use_cases.escalate_event_use_case import (
 from src.application.use_cases.list_recent_events_use_case import (
     ListRecentEventsUseCase,
 )
+from src.application.use_cases.place_emergency_call_use_case import (
+    PlaceEmergencyCallUseCase,
+)
 from src.application.use_cases.process_detection_use_case import (
     ProcessDetectionUseCase,
 )
@@ -43,6 +46,9 @@ from src.infrastructure.tasks.celery_app import create_celery_app
 from src.infrastructure.tasks.celery_task_queue import CeleryTaskQueue
 from src.infrastructure.telephony.twilio_telephony_client import (
     TwilioTelephonyClient,
+)
+from src.infrastructure.voice.elevenlabs_conversational_agent import (
+    ElevenLabsConversationalAgent,
 )
 from src.infrastructure.voice.elevenlabs_voice_client import ElevenLabsVoiceClient
 
@@ -96,6 +102,14 @@ class Container:
         )
 
     @cached_property
+    def voice_agent(self) -> ElevenLabsConversationalAgent:
+        return ElevenLabsConversationalAgent(
+            api_key=self.settings.elevenlabs_api_key,
+            agent_id=self.settings.elevenlabs_agent_id,
+            phone_number_id=self.settings.elevenlabs_phone_number_id,
+        )
+
+    @cached_property
     def telephony(self) -> TwilioTelephonyClient:
         return TwilioTelephonyClient(
             account_sid=self.settings.twilio_account_sid,
@@ -129,6 +143,12 @@ class Container:
             telephony=self.telephony,
             publisher=self.publisher,
             on_call_number=self.settings.on_call_number,
+        )
+
+    def place_emergency_call_use_case(self) -> PlaceEmergencyCallUseCase:
+        return PlaceEmergencyCallUseCase(
+            voice_agent=self.voice_agent,
+            default_to_number=self.settings.on_call_number,
         )
 
     def acknowledge_event_use_case(self) -> AcknowledgeEventUseCase:
