@@ -62,7 +62,7 @@ class Settings:
             # claude-3-5-sonnet-20241022 was retired 2025-10-28; default to a
             # current vision model so feed frames don't 404.
             anthropic_vision_model=os.getenv(
-                "ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-latest"
+                "ANTHROPIC_VISION_MODEL", "claude-opus-4-8"
             ),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "Rachel"),
