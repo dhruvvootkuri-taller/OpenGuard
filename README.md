@@ -117,7 +117,7 @@ LLM, TTS, or telephony providers.
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.9+ (3.11 recommended)
 - Node.js 18+
 - Redis (local or via Docker)
 - API keys for Anthropic, ElevenLabs, and Twilio
@@ -183,6 +183,7 @@ This brings up Redis, the API, and the Celery worker together.
 | POST   | `/api/events`                     | Process a detection → event       |
 | GET    | `/api/events`                     | List recent events                |
 | POST   | `/api/events/{id}/acknowledge`    | Acknowledge an event              |
+| POST   | `/api/feeds/{camera_id}/frame`    | Assess one MP4 frame with Claude vision → event |
 
 Example:
 
@@ -202,6 +203,52 @@ curl -X POST http://localhost:8000/api/events \
 A high/critical threat is persisted to Redis immediately, then a Celery worker
 summarizes it with Claude Haiku, synthesizes voice via ElevenLabs, and
 escalates via a Twilio call.
+
+---
+
+## MP4 camera-feed end-to-end test (browser)
+
+Each `VideoMonitor` tile on the dashboard captures a frame from a playing MP4
+(via a `<canvas>`) every ~5s and POSTs it to
+`POST /api/feeds/{camera_id}/frame`. Claude **vision** assesses the frame; when
+it returns `is_emergency: true` the backend creates a `SecurityEvent` that
+appears in the Emergency Log. A calm frame returns `is_emergency: false` and
+nothing is persisted — playback is never interrupted.
+
+### Required env vars
+
+| Variable                 | Purpose                                              |
+| ------------------------ | ---------------------------------------------------- |
+| `ANTHROPIC_API_KEY`      | Anthropic key used for both Haiku and vision         |
+| `ANTHROPIC_VISION_MODEL` | Vision model for frame analysis. **Defaults to `claude-3-5-sonnet-latest`** — must be a *current* model (the old `claude-3-5-sonnet-20241022` was retired 2025-10-28 and 404s every frame) |
+| `REDIS_URL`              | Redis connection (persistence + pub/sub)             |
+
+> A bad API key or retired model is **logged and surfaced as HTTP 502** by the
+> frame endpoint — it is never silently treated as "all clear".
+
+### Run it
+
+```bash
+# 1. Redis (Docker or local)
+docker run -p 6379:6379 redis:7        # or: redis-server
+
+# 2. Backend (Python 3.9+ supported)
+cp .env.example .env                   # fill in ANTHROPIC_API_KEY
+uvicorn src.main:app --reload          # -> http://localhost:8000  (/health = 200)
+
+# 3. Frontend
+cd frontend && npm install && npm run dev   # -> http://localhost:5173 (proxies /api → :8000)
+```
+
+Then open `http://localhost:5173`, drop an MP4 into a monitor tile, and press
+play. Watch the browser **Network** tab for `POST /api/feeds/CAM-01/frame`
+calls and the backend logs for the vision assessments. An emergency clip raises
+a new event in the Emergency Log within one poll cycle (~5s) with a severity
+and bounding box; a calm clip leaves the log untouched.
+
+> **Python 3.9 note:** the API boots on Python 3.9+. Response schemas use
+> `Optional[...]` (never a quoted PEP-604 union + `model_rebuild()`, which
+> raises `TypeError` on 3.9). This is covered by `tests/interfaces/test_app_boot.py`.
 
 ---
 

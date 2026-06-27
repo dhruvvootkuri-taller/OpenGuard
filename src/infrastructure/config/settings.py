@@ -28,6 +28,8 @@ class Settings:
     # Anthropic / Claude Haiku
     anthropic_api_key: str
     anthropic_model: str
+    # Anthropic / Claude vision (MP4 feed-frame analysis)
+    anthropic_vision_model: str
 
     # ElevenLabs
     elevenlabs_api_key: str
@@ -57,6 +59,11 @@ class Settings:
             ),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
+            # claude-3-5-sonnet-20241022 was retired 2025-10-28; default to a
+            # current vision model so feed frames don't 404.
+            anthropic_vision_model=os.getenv(
+                "ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-latest"
+            ),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "Rachel"),
             elevenlabs_agent_id=os.getenv("ELEVENLABS_AGENT_ID", ""),

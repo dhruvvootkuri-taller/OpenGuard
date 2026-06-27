@@ -32,5 +32,6 @@ def create_app(
         return {"status": "ok", "service": "open-guard"}
 
     app.include_router(security_event_controller.router)
+    app.include_router(security_event_controller.feeds_router)
     app.include_router(voice_agent_controller.router)
     return app
