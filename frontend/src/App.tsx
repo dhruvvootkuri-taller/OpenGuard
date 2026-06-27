@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { acknowledgeEvent, fetchRecentEvents } from './api/eventsApi';
+import {
+  acknowledgeEvent,
+  clearResolvedEvents,
+  dismissEvent,
+  fetchRecentEvents,
+  resolveEvent,
+} from './api/eventsApi';
 import { CallHistory } from './components/CallHistory';
 import { EmergencyLog } from './components/EmergencyLog';
 import { OngoingCalls } from './components/OngoingCalls';
@@ -73,6 +79,38 @@ export default function App() {
     }
   }, []);
 
+  const handleResolve = useCallback(async (event: SecurityEvent) => {
+    try {
+      const updated = await resolveEvent(event.id);
+      setEvents((prev) => mergeEvent(prev, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  const handleDismiss = useCallback(async (event: SecurityEvent) => {
+    try {
+      const updated = await dismissEvent(event.id);
+      setEvents((prev) => mergeEvent(prev, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  const handleClearResolved = useCallback(async () => {
+    try {
+      await clearResolvedEvents(false);
+      // Drop terminal events locally; the next poll reconciles the rest.
+      setEvents((prev) =>
+        prev.filter(
+          (e) => !['resolved', 'dismissed'].includes(e.status.toLowerCase()),
+        ),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
   return (
     <div className="console">
       <header className="console__header">
@@ -86,6 +124,14 @@ export default function App() {
           </div>
         </div>
         <StatusBar events={events} online={online} clock={clock} />
+        <button
+          type="button"
+          className="btn btn--clear"
+          onClick={() => void handleClearResolved()}
+          title="Remove resolved & dismissed events"
+        >
+          Clear Resolved
+        </button>
       </header>
 
       {error && <p className="console__error">⚠️ {error}</p>}
@@ -106,7 +152,12 @@ export default function App() {
 
         <aside className="console__side">
           <OngoingCalls events={events} />
-          <EmergencyLog events={events} onAcknowledge={handleAcknowledge} />
+          <EmergencyLog
+            events={events}
+            onAcknowledge={handleAcknowledge}
+            onResolve={handleResolve}
+            onDismiss={handleDismiss}
+          />
         </aside>
       </div>
     </div>

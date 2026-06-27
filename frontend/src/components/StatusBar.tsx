@@ -1,4 +1,5 @@
 import type { SecurityEvent } from '../types';
+import { isActiveEvent } from '../types';
 
 interface Props {
   events: SecurityEvent[];
@@ -6,20 +7,22 @@ interface Props {
   clock: Date;
 }
 
-/** Top KPI strip for the operations console. */
+/** Top KPI strip for the operations console. Counts reflect current activity
+ * (active, unresolved events) rather than the full historical pile. */
 export function StatusBar({ events, online, clock }: Props) {
-  const critical = events.filter(
+  const active = events.filter(isActiveEvent);
+  const critical = active.filter(
     (e) => e.threat_severity.toLowerCase() === 'critical',
   ).length;
-  const escalations = events.filter((e) => e.escalated).length;
-  const acknowledged = events.filter(
+  const escalations = active.filter((e) => e.escalated).length;
+  const acknowledged = active.filter(
     (e) => e.status.toLowerCase() === 'acknowledged',
   ).length;
 
   return (
     <div className="statusbar">
       <div className="statusbar__group">
-        <Kpi label="Total Events" value={events.length} />
+        <Kpi label="Active Events" value={active.length} />
         <Kpi label="Critical" value={critical} tone="critical" />
         <Kpi label="Escalations" value={escalations} tone="high" />
         <Kpi label="Acknowledged" value={acknowledged} tone="ok" />

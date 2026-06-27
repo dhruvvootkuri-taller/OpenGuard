@@ -19,6 +19,21 @@ export interface SecurityEvent {
   detections: DetectionBox[];
 }
 
+/** Terminal lifecycle statuses — these are off the live/active views. */
+export const TERMINAL_STATUSES = ['resolved', 'dismissed'] as const;
+
+/** True while an event still belongs in the live/active views. */
+export function isActiveEvent(event: SecurityEvent): boolean {
+  return !TERMINAL_STATUSES.includes(
+    event.status.toLowerCase() as (typeof TERMINAL_STATUSES)[number],
+  );
+}
+
+/** True once an event has been resolved or dismissed. */
+export function isResolvedEvent(event: SecurityEvent): boolean {
+  return event.status.toLowerCase() === 'resolved';
+}
+
 /** Payload accepted by POST /api/events. */
 export interface ProcessDetectionRequest {
   camera_id: string;

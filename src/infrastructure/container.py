@@ -14,6 +14,15 @@ import redis.asyncio as redis
 from src.application.use_cases.acknowledge_event_use_case import (
     AcknowledgeEventUseCase,
 )
+from src.application.use_cases.clear_resolved_events_use_case import (
+    ClearResolvedEventsUseCase,
+)
+from src.application.use_cases.dismiss_event_use_case import (
+    DismissEventUseCase,
+)
+from src.application.use_cases.resolve_event_use_case import (
+    ResolveEventUseCase,
+)
 from src.application.use_cases.analyze_feed_frame_use_case import (
     AnalyzeFeedFrameUseCase,
 )
@@ -174,5 +183,17 @@ class Container:
     def acknowledge_event_use_case(self) -> AcknowledgeEventUseCase:
         return AcknowledgeEventUseCase(repository=self.repository)
 
+    def resolve_event_use_case(self) -> ResolveEventUseCase:
+        return ResolveEventUseCase(repository=self.repository)
+
+    def dismiss_event_use_case(self) -> DismissEventUseCase:
+        return DismissEventUseCase(repository=self.repository)
+
+    def clear_resolved_events_use_case(self) -> ClearResolvedEventsUseCase:
+        return ClearResolvedEventsUseCase(repository=self.repository)
+
     def list_recent_events_use_case(self) -> ListRecentEventsUseCase:
-        return ListRecentEventsUseCase(repository=self.repository)
+        return ListRecentEventsUseCase(
+            repository=self.repository,
+            inactivity_ttl_seconds=self.settings.event_inactivity_ttl_seconds,
+        )

@@ -452,6 +452,45 @@ body {
   background: rgba(47, 129, 247, 0.22);
 }
 
+/* Lifecycle action row on event cards. */
+.event-card__actions {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.event-card__actions .btn {
+  flex: 1 1 auto;
+  margin-top: 0;
+  width: auto;
+}
+
+.btn--resolve {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.45);
+  color: #56d364;
+}
+
+.btn--resolve:hover {
+  background: rgba(63, 185, 80, 0.22);
+}
+
+.btn--dismiss {
+  background: rgba(139, 148, 158, 0.12);
+  border-color: rgba(139, 148, 158, 0.4);
+  color: #b1bac4;
+}
+
+.btn--dismiss:hover {
+  background: rgba(139, 148, 158, 0.22);
+}
+
+.btn--clear {
+  align-self: center;
+  white-space: nowrap;
+}
+
 /* ---------- Panels ---------- */
 .panel {
   background: var(--panel);
