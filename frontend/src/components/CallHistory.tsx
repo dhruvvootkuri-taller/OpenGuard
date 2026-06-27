@@ -6,13 +6,16 @@ interface Props {
 }
 
 /**
- * Resolved escalations — calls that have been acknowledged by an operator.
- * Acts as an audit trail for the shift.
+ * Audit trail of escalated calls that are no longer ongoing — acknowledged or
+ * resolved (including auto-expired) escalations. Dismissed events are treated
+ * as non-incidents and excluded.
  */
 export function CallHistory({ events }: Props) {
-  const history = events.filter(
-    (e) => e.escalated && e.status.toLowerCase() === 'acknowledged',
-  );
+  const history = events.filter((e) => {
+    if (!e.escalated) return false;
+    const status = e.status.toLowerCase();
+    return status === 'acknowledged' || status === 'resolved';
+  });
 
   return (
     <Panel title="Call History" count={history.length}>

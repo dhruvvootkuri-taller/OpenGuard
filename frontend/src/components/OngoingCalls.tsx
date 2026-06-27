@@ -1,17 +1,23 @@
 import { Panel } from './Panel';
 import type { SecurityEvent } from '../types';
+import { isActiveEvent } from '../types';
 
 interface Props {
   events: SecurityEvent[];
 }
 
 /**
- * Escalated events whose dispatch call is still in progress (escalated but not
- * yet acknowledged by an operator).
+ * Genuinely active dispatch calls: escalated incidents that are still active
+ * (not resolved/dismissed/expired) and not yet acknowledged by an operator.
+ * Resolved or expired escalations drop off here and live on only in Call
+ * History.
  */
 export function OngoingCalls({ events }: Props) {
   const ongoing = events.filter(
-    (e) => e.escalated && e.status.toLowerCase() !== 'acknowledged',
+    (e) =>
+      e.escalated &&
+      isActiveEvent(e) &&
+      e.status.toLowerCase() !== 'acknowledged',
   );
 
   return (

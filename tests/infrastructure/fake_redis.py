@@ -37,6 +37,11 @@ class FakeRedis:
     async def zadd(self, key: str, mapping: dict[str, float]) -> None:
         self._zsets.setdefault(key, {}).update(mapping)
 
+    async def zrem(self, key: str, *members: str) -> None:
+        zset = self._zsets.get(key, {})
+        for member in members:
+            zset.pop(member, None)
+
     async def zrevrange(self, key: str, start: int, end: int) -> list[str]:
         items = sorted(
             self._zsets.get(key, {}).items(), key=lambda kv: kv[1], reverse=True

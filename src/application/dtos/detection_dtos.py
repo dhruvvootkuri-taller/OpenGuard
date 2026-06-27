@@ -52,6 +52,20 @@ class AcknowledgeEventInputDTO:
 
 
 @dataclass(frozen=True)
+class ResolveEventInputDTO:
+    """Input for resolving or dismissing a single event."""
+
+    event_id: str
+
+
+@dataclass(frozen=True)
+class ClearResolvedOutputDTO:
+    """How many events the supported 'clear' path removed."""
+
+    cleared: int
+
+
+@dataclass(frozen=True)
 class AnalyzeFrameInputDTO:
     """Input contract for the AnalyzeFeedFrameUseCase.
 

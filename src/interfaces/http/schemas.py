@@ -30,6 +30,18 @@ class AcknowledgeRequest(BaseModel):
     operator_id: str = Field(..., min_length=1)
 
 
+class ClearResolvedRequest(BaseModel):
+    """Supported reset path. When ``include_active`` is true every event is
+    wiped (full demo/test reset); otherwise only resolved/dismissed events go.
+    """
+
+    include_active: bool = False
+
+
+class ClearResolvedResponse(BaseModel):
+    cleared: int
+
+
 class EmergencyCallRequest(BaseModel):
     """Request to place an interactive emergency-helpline call.
 

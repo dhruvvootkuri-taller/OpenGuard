@@ -28,3 +28,8 @@ class SecurityEventRepository(ABC):
     async def list_recent(self, limit: int = 50) -> list[SecurityEvent]:
         """Return the most recent events, newest first."""
         raise NotImplementedError
+
+    @abstractmethod
+    async def delete(self, event_id: str) -> None:
+        """Remove an event entirely (used by the supported 'clear' path)."""
+        raise NotImplementedError

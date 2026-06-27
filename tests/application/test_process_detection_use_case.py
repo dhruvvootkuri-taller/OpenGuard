@@ -40,6 +40,9 @@ class InMemoryRepo(SecurityEventRepository):
     async def list_recent(self, limit: int = 50):
         return list(self.items.values())[:limit]
 
+    async def delete(self, event_id: str) -> None:
+        self.items.pop(event_id, None)
+
 
 class FakePublisher(EventPublisherPort):
     def __init__(self):

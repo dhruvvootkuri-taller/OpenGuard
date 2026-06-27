@@ -28,6 +28,9 @@ def build_app():
         acknowledge_event=container.acknowledge_event_use_case(),
         list_recent_events=container.list_recent_events_use_case(),
         analyze_feed_frame=container.analyze_feed_frame_use_case(),
+        resolve_event=container.resolve_event_use_case(),
+        dismiss_event=container.dismiss_event_use_case(),
+        clear_resolved_events=container.clear_resolved_events_use_case(),
     )
 
     voice_controller = VoiceAgentController(

@@ -31,6 +31,48 @@ export async function acknowledgeEvent(
   return (await res.json()) as SecurityEvent;
 }
 
+/** Resolve an event — drops it from the active views (kept in Call History
+ * if it was escalated, as an audit trail). */
+export async function resolveEvent(eventId: string): Promise<SecurityEvent> {
+  const res = await fetch(`${BASE_URL}/${eventId}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to resolve event: ${res.status}`);
+  }
+  return (await res.json()) as SecurityEvent;
+}
+
+/** Dismiss an event as a non-incident (false positive / noise). */
+export async function dismissEvent(eventId: string): Promise<SecurityEvent> {
+  const res = await fetch(`${BASE_URL}/${eventId}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to dismiss event: ${res.status}`);
+  }
+  return (await res.json()) as SecurityEvent;
+}
+
+/** Supported reset path. Clears resolved/dismissed events (or everything when
+ * `includeActive` is set). Returns how many events were removed. */
+export async function clearResolvedEvents(
+  includeActive = false,
+): Promise<number> {
+  const res = await fetch(`${BASE_URL}/clear-resolved`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ include_active: includeActive }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to clear events: ${res.status}`);
+  }
+  const data = (await res.json()) as { cleared: number };
+  return data.cleared;
+}
+
 /**
  * Submit a detection produced by a (simulated) live feed. Drives the real
  * Open Guard threat-assessment + escalation pipeline on the backend.

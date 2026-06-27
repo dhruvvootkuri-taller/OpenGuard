@@ -44,6 +44,11 @@ class Settings:
     twilio_from_number: str
     on_call_number: str
 
+    # Event lifecycle
+    # An active event with no new frames/detections for this many seconds is
+    # auto-resolved so the dashboard reflects current activity, not a backlog.
+    event_inactivity_ttl_seconds: int
+
     # Detection gating (cut false alarms on the stochastic MP4 vision feed)
     detection_min_confidence: float
     detection_min_threat_score: float
@@ -84,6 +89,9 @@ class Settings:
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
+            event_inactivity_ttl_seconds=int(
+                os.getenv("EVENT_INACTIVITY_TTL_SECONDS", "300")
+            ),
             # Detection gating: a flagged frame must clear BOTH thresholds to
             # count, and the same emergency must recur across the confirmation
             # window before it becomes an event/escalation.

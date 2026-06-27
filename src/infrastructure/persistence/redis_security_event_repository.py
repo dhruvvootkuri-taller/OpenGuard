@@ -52,6 +52,10 @@ class RedisSecurityEventRepository(SecurityEventRepository):
                 events.append(event)
         return events
 
+    async def delete(self, event_id: str) -> None:
+        await self._client.delete(_EVENT_KEY.format(event_id=event_id))
+        await self._client.zrem(_RECENT_KEY, event_id)
+
     # --- mapping helpers --------------------------------------------------
 
     @staticmethod
@@ -62,6 +66,7 @@ class RedisSecurityEventRepository(SecurityEventRepository):
             "status": event.status.value,
             "description": event.description,
             "detected_at": event.detected_at.isoformat(),
+            "last_seen_at": event.last_seen_at.isoformat(),
             "acknowledged_by": event.acknowledged_by,
             "threat": {
                 "severity": event.threat_level.severity.name,
@@ -104,6 +109,9 @@ class RedisSecurityEventRepository(SecurityEventRepository):
             description=record["description"],
             id=record["id"],
             detected_at=datetime.fromisoformat(record["detected_at"]),
+            last_seen_at=datetime.fromisoformat(
+                record.get("last_seen_at", record["detected_at"])
+            ),
         )
         # Restore persisted lifecycle state directly (bypassing transitions).
         event.status = SecurityEventStatus(record["status"])
