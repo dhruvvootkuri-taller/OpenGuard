@@ -50,6 +50,10 @@ class Settings:
     detection_confirmation_window: int
     detection_confirmation_required: int
 
+    # Emergency de-duplication: collapse repeated emergency frames from the
+    # same camera into a single incident for this many seconds (cooldown).
+    emergency_dedup_window_seconds: int
+
     # App
     app_host: str
     app_port: int
@@ -94,6 +98,9 @@ class Settings:
             ),
             detection_confirmation_required=int(
                 os.getenv("DETECTION_CONFIRMATION_REQUIRED", "2")
+            ),
+            emergency_dedup_window_seconds=int(
+                os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
             ),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),

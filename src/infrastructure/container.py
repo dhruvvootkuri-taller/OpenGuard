@@ -33,6 +33,9 @@ from src.domain.services.threat_assessment_service import ThreatAssessmentServic
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.llm.claude_haiku_client import ClaudeHaikuClient
 from src.infrastructure.messaging.redis_event_publisher import RedisEventPublisher
+from src.infrastructure.persistence.redis_active_emergency_tracker import (
+    RedisActiveEmergencyTracker,
+)
 from src.infrastructure.persistence.redis_call_record_repository import (
     RedisCallRecordRepository,
 )
@@ -85,6 +88,13 @@ class Container:
     @cached_property
     def call_record_repository(self) -> RedisCallRecordRepository:
         return RedisCallRecordRepository(self.redis)
+
+    @cached_property
+    def active_emergency_tracker(self) -> RedisActiveEmergencyTracker:
+        return RedisActiveEmergencyTracker(
+            self.redis,
+            window_seconds=self.settings.emergency_dedup_window_seconds,
+        )
 
     @cached_property
     def publisher(self) -> RedisEventPublisher:
@@ -154,6 +164,7 @@ class Container:
             threat_service=self.threat_service,
             publisher=self.publisher,
             task_queue=self.task_queue,
+            active_tracker=self.active_emergency_tracker,
         )
 
     def analyze_feed_frame_use_case(self) -> AnalyzeFeedFrameUseCase:
@@ -166,6 +177,7 @@ class Container:
             confirmation=self.detection_confirmation,
             min_confidence=self.settings.detection_min_confidence,
             min_threat_score=self.settings.detection_min_threat_score,
+            active_tracker=self.active_emergency_tracker,
         )
 
     def escalate_event_use_case(self) -> EscalateEventUseCase:
@@ -185,7 +197,10 @@ class Container:
         )
 
     def acknowledge_event_use_case(self) -> AcknowledgeEventUseCase:
-        return AcknowledgeEventUseCase(repository=self.repository)
+        return AcknowledgeEventUseCase(
+            repository=self.repository,
+            active_tracker=self.active_emergency_tracker,
+        )
 
     def list_recent_events_use_case(self) -> ListRecentEventsUseCase:
         return ListRecentEventsUseCase(repository=self.repository)

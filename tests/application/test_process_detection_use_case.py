@@ -11,6 +11,10 @@ from src.application.dtos.detection_dtos import (
     DetectionBoxDTO,
     ProcessDetectionInputDTO,
 )
+from src.application.ports.active_emergency_tracker_port import (
+    ActiveEmergency,
+    ActiveEmergencyTrackerPort,
+)
 from src.application.ports.event_publisher_port import EventPublisherPort
 from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.use_cases.process_detection_use_case import (
@@ -54,12 +58,35 @@ class FakeTaskQueue(TaskQueuePort):
         return "task-id"
 
 
-def _build_use_case(repo, publisher, queue) -> ProcessDetectionUseCase:
+class FakeActiveTracker(ActiveEmergencyTrackerPort):
+    def __init__(self):
+        self.active: dict[str, str] = {}
+        self.touches: list[str] = []
+
+    async def get_active(self, camera_id: str):
+        event_id = self.active.get(camera_id)
+        if event_id is None:
+            return None
+        return ActiveEmergency(camera_id=camera_id, event_id=event_id)
+
+    async def mark_active(self, camera_id: str, event_id: str) -> None:
+        self.active[camera_id] = event_id
+
+    async def touch(self, camera_id: str) -> None:
+        if camera_id in self.active:
+            self.touches.append(camera_id)
+
+    async def clear(self, camera_id: str) -> None:
+        self.active.pop(camera_id, None)
+
+
+def _build_use_case(repo, publisher, queue, tracker=None) -> ProcessDetectionUseCase:
     return ProcessDetectionUseCase(
         repository=repo,
         threat_service=ThreatAssessmentService(),
         publisher=publisher,
         task_queue=queue,
+        active_tracker=tracker or FakeActiveTracker(),
     )
 
 
@@ -112,3 +139,64 @@ async def test_low_threat_does_not_enqueue_escalation():
     assert result.escalated is False
     assert queue.enqueued == []
     assert len(publisher.published) == 1
+
+
+def _knife_detection(camera_id="cam-1") -> ProcessDetectionInputDTO:
+    return ProcessDetectionInputDTO(
+        camera_id=camera_id,
+        detections=[
+            DetectionBoxDTO(
+                label="knife", confidence=0.95, x=0.1, y=0.1,
+                width=0.2, height=0.2,
+            )
+        ],
+        is_armed_zone=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_escalating_detections_collapse_to_one_incident():
+    repo = InMemoryRepo()
+    publisher = FakePublisher()
+    queue = FakeTaskQueue()
+    tracker = FakeActiveTracker()
+    use_case = _build_use_case(repo, publisher, queue, tracker)
+
+    results = [await use_case.execute(_knife_detection()) for _ in range(5)]
+
+    assert len(repo.items) == 1
+    assert len(queue.enqueued) == 1
+    assert len({r.id for r in results}) == 1
+    assert len(tracker.touches) == 4
+
+
+@pytest.mark.asyncio
+async def test_new_incident_after_clear():
+    repo = InMemoryRepo()
+    publisher = FakePublisher()
+    queue = FakeTaskQueue()
+    tracker = FakeActiveTracker()
+    use_case = _build_use_case(repo, publisher, queue, tracker)
+
+    first = await use_case.execute(_knife_detection())
+    await tracker.clear("cam-1")
+    second = await use_case.execute(_knife_detection())
+
+    assert first.id != second.id
+    assert len(queue.enqueued) == 2
+
+
+@pytest.mark.asyncio
+async def test_dedup_is_per_camera():
+    repo = InMemoryRepo()
+    publisher = FakePublisher()
+    queue = FakeTaskQueue()
+    tracker = FakeActiveTracker()
+    use_case = _build_use_case(repo, publisher, queue, tracker)
+
+    await use_case.execute(_knife_detection("cam-1"))
+    await use_case.execute(_knife_detection("cam-1"))
+    await use_case.execute(_knife_detection("cam-2"))
+
+    assert len(repo.items) == 2
+    assert len(queue.enqueued) == 2

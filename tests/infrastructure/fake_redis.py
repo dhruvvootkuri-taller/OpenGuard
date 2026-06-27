@@ -14,7 +14,9 @@ class FakeRedis:
         self._sets: dict[str, set[str]] = {}
         self._zsets: dict[str, dict[str, float]] = {}
 
-    async def set(self, key: str, value: str) -> None:
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        # TTL (``ex``) is accepted for API parity with redis but not enforced
+        # in this in-memory fake; tests drive expiry explicitly via delete.
         self._strings[key] = value
 
     async def get(self, key: str):
