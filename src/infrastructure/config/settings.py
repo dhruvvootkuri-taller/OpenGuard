@@ -9,6 +9,12 @@ import os
 from dataclasses import dataclass
 
 
+def _csv(value: str) -> tuple[str, ...]:
+    """Parse a comma-separated env value into an ordered tuple, trimming
+    whitespace and dropping empties while preserving order."""
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 def _env(key: str, default: str | None = None) -> str:
     value = os.getenv(key, default)
     if value is None:
@@ -43,6 +49,16 @@ class Settings:
     twilio_auth_token: str
     twilio_from_number: str
     on_call_number: str
+
+    # Escalation reliability: ordered on-call contact list + retry/fallback.
+    # When an escalation call is not answered we retry the same contact up to
+    # ``escalation_max_retries_per_contact`` times, then fall back to the next
+    # contact. The event is marked UNREACHABLE only after every contact is
+    # exhausted. Polling captures the provider call outcome.
+    escalation_on_call_numbers: tuple[str, ...]
+    escalation_max_retries_per_contact: int
+    escalation_answer_timeout_seconds: int
+    escalation_poll_interval_seconds: float
 
     # Event lifecycle
     # An active event with no new frames/detections for this many seconds is
@@ -89,6 +105,21 @@ class Settings:
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
+            # Ordered on-call list. Defaults to the single ON_CALL_NUMBER so
+            # existing single-contact setups keep working unchanged.
+            escalation_on_call_numbers=(
+                _csv(os.getenv("ESCALATION_ON_CALL_NUMBERS", ""))
+                or _csv(os.getenv("ON_CALL_NUMBER", ""))
+            ),
+            escalation_max_retries_per_contact=int(
+                os.getenv("ESCALATION_MAX_RETRIES_PER_CONTACT", "1")
+            ),
+            escalation_answer_timeout_seconds=int(
+                os.getenv("ESCALATION_ANSWER_TIMEOUT_SECONDS", "30")
+            ),
+            escalation_poll_interval_seconds=float(
+                os.getenv("ESCALATION_POLL_INTERVAL_SECONDS", "2")
+            ),
             event_inactivity_ttl_seconds=int(
                 os.getenv("EVENT_INACTIVITY_TTL_SECONDS", "300")
             ),
