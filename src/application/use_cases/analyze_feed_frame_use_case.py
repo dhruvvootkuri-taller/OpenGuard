@@ -14,6 +14,9 @@ from src.application.ports.active_emergency_tracker_port import (
 from src.application.ports.event_publisher_port import EventPublisherPort
 from src.application.ports.task_queue_port import TaskQueuePort
 from src.application.ports.vision_analyzer_port import VisionAnalyzerPort
+from src.application.ports.vision_rate_limiter_port import (
+    VisionRateLimiterPort,
+)
 from src.domain.entities.security_event import SecurityEvent
 from src.domain.repositories.security_event_repository import (
     SecurityEventRepository,
@@ -35,6 +38,7 @@ class AnalyzeFeedFrameUseCase:
         task_queue: TaskQueuePort,
         confirmation: DetectionConfirmationPort,
         active_tracker: ActiveEmergencyTrackerPort,
+        rate_limiter: VisionRateLimiterPort,
         min_confidence: float = 0.6,
         min_threat_score: float = 0.4,
     ) -> None:
@@ -45,10 +49,37 @@ class AnalyzeFeedFrameUseCase:
         self._task_queue = task_queue
         self._confirmation = confirmation
         self._active_tracker = active_tracker
+        self._rate_limiter = rate_limiter
         self._min_confidence = min_confidence
         self._min_threat_score = min_threat_score
 
     async def execute(self, dto: AnalyzeFrameInputDTO) -> AnalyzeFrameOutputDTO:
+        # 0. COST-CONTROL GATE. Before spending money on a vision call, enforce
+        #    the per-camera minimum interval, the global concurrency / rate cap
+        #    and the daily budget kill switch — server-side, independent of how
+        #    fast the client sends frames. A denied frame is NOT analysed: it
+        #    returns a throttled result that surfaces the state to the UI.
+        decision = await self._rate_limiter.try_acquire(dto.camera_id)
+        if not decision.allowed:
+            return AnalyzeFrameOutputDTO(
+                camera_id=dto.camera_id,
+                is_emergency=False,
+                label="",
+                summary="",
+                event=None,
+                is_throttled=True,
+                throttle_state=decision.state,
+                throttle_reason=decision.reason,
+            )
+
+        try:
+            return await self._analyze(dto)
+        finally:
+            # Always release the in-flight slot, even if the vision call raised,
+            # so the global concurrency gauge never leaks.
+            await self._rate_limiter.release(dto.camera_id)
+
+    async def _analyze(self, dto: AnalyzeFrameInputDTO) -> AnalyzeFrameOutputDTO:
         # 1. Delegate the emergency verdict to the vision model. A provider
         #    failure (bad key / retired model) raises VisionAnalyzerError and
         #    propagates — it is never silently treated as "all clear".

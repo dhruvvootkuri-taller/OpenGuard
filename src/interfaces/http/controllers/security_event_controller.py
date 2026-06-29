@@ -151,6 +151,9 @@ class SecurityEventController:
             event=event,
             is_candidate=result.is_candidate,
             candidate_reason=result.candidate_reason,
+            is_throttled=result.is_throttled,
+            throttle_state=result.throttle_state,
+            throttle_reason=result.throttle_reason,
         )
 
     async def list_events(self, limit: int = 50) -> list[SecurityEventResponse]:

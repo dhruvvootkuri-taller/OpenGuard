@@ -59,6 +59,16 @@ class Settings:
     # same camera into a single incident for this many seconds (cooldown).
     emergency_dedup_window_seconds: int
 
+    # Vision cost controls / rate limiting (protect Anthropic spend + DoS).
+    # Per-camera minimum interval between ANALYSED frames (seconds); excess
+    # frames are skipped server-side. Global caps on concurrent in-flight calls
+    # and calls-per-minute. Daily call budget acts as a kill switch that halts
+    # analysis when exceeded. Any limit set to 0 disables that specific limit.
+    vision_per_camera_min_interval_seconds: float
+    vision_max_concurrent_calls: int
+    vision_max_calls_per_minute: int
+    vision_daily_budget_calls: int
+
     # App
     app_host: str
     app_port: int
@@ -109,6 +119,22 @@ class Settings:
             ),
             emergency_dedup_window_seconds=int(
                 os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
+            ),
+            # Vision cost controls. Sane defaults: analyse at most one frame per
+            # camera every 2s, at most 4 concurrent and 60 calls/minute globally,
+            # and stop after 5000 calls/day (kill switch). Set any to 0 to
+            # disable that limit.
+            vision_per_camera_min_interval_seconds=float(
+                os.getenv("VISION_PER_CAMERA_MIN_INTERVAL_SECONDS", "2.0")
+            ),
+            vision_max_concurrent_calls=int(
+                os.getenv("VISION_MAX_CONCURRENT_CALLS", "4")
+            ),
+            vision_max_calls_per_minute=int(
+                os.getenv("VISION_MAX_CALLS_PER_MINUTE", "60")
+            ),
+            vision_daily_budget_calls=int(
+                os.getenv("VISION_DAILY_BUDGET_CALLS", "5000")
             ),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
