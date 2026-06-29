@@ -25,6 +25,9 @@ from src.application.use_cases.analyze_feed_frame_use_case import (
 from src.infrastructure.persistence.in_memory_detection_confirmation_tracker import (
     InMemoryDetectionConfirmationTracker,
 )
+from src.infrastructure.persistence.in_memory_vision_rate_limiter import (
+    InMemoryVisionRateLimiter,
+)
 from src.domain.entities.security_event import SecurityEvent
 from src.domain.repositories.security_event_repository import (
     SecurityEventRepository,
@@ -115,6 +118,7 @@ def _build(
     required=1,
     min_confidence=0.6,
     min_threat_score=0.4,
+    rate_limiter=None,
 ) -> AnalyzeFeedFrameUseCase:
     return AnalyzeFeedFrameUseCase(
         vision_analyzer=vision,
@@ -125,6 +129,15 @@ def _build(
         active_tracker=tracker or FakeActiveTracker(),
         confirmation=InMemoryDetectionConfirmationTracker(
             window=window, required=required
+        ),
+        rate_limiter=rate_limiter
+        # Disable all cost-control limits by default so existing behavioural
+        # tests are unaffected; rate-limiting has its own dedicated tests.
+        or InMemoryVisionRateLimiter(
+            per_camera_min_interval_seconds=0,
+            max_concurrent_calls=0,
+            max_calls_per_minute=0,
+            daily_budget_calls=0,
         ),
         min_confidence=min_confidence,
         min_threat_score=min_threat_score,
