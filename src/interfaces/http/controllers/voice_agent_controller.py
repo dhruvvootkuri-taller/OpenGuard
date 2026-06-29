@@ -6,12 +6,13 @@ the application layer (use case + DTOs) and the web framework.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.application.dtos.voice_agent_dtos import PlaceEmergencyCallInputDTO
 from src.application.use_cases.place_emergency_call_use_case import (
     PlaceEmergencyCallUseCase,
 )
+from src.interfaces.http.auth import Authenticator
 from src.interfaces.http.schemas import (
     EmergencyCallRequest,
     EmergencyCallResponse,
@@ -21,8 +22,13 @@ from src.interfaces.http.schemas import (
 class VoiceAgentController:
     """Wires the emergency-call use case into FastAPI routes."""
 
-    def __init__(self, place_emergency_call: PlaceEmergencyCallUseCase) -> None:
+    def __init__(
+        self,
+        place_emergency_call: PlaceEmergencyCallUseCase,
+        authenticator: Authenticator,
+    ) -> None:
         self._place_emergency_call = place_emergency_call
+        self._authenticator = authenticator
         self.router = APIRouter(prefix="/api/voice", tags=["voice"])
         self._register_routes()
 
@@ -33,6 +39,8 @@ class VoiceAgentController:
             methods=["POST"],
             response_model=EmergencyCallResponse,
             status_code=201,
+            # Placing a REAL outbound phone call always requires auth.
+            dependencies=[Depends(self._authenticator.dependency())],
         )
 
     async def place_call(

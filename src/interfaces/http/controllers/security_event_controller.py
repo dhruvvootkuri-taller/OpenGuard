@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.application.dtos.detection_dtos import (
     AcknowledgeEventInputDTO,
@@ -40,6 +40,7 @@ from src.application.use_cases.process_detection_use_case import (
 from src.application.use_cases.resolve_event_use_case import (
     ResolveEventUseCase,
 )
+from src.interfaces.http.auth import Authenticator
 from src.interfaces.http.schemas import (
     AcknowledgeRequest,
     AnalyzeFrameRequest,
@@ -63,6 +64,7 @@ class SecurityEventController:
         resolve_event: ResolveEventUseCase,
         dismiss_event: DismissEventUseCase,
         clear_resolved_events: ClearResolvedEventsUseCase,
+        authenticator: Authenticator,
     ) -> None:
         self._process_detection = process_detection
         self._acknowledge_event = acknowledge_event
@@ -71,15 +73,19 @@ class SecurityEventController:
         self._resolve_event = resolve_event
         self._dismiss_event = dismiss_event
         self._clear_resolved_events = clear_resolved_events
+        self._authenticator = authenticator
         self.router = APIRouter(prefix="/api/events", tags=["events"])
         # Feed-frame analysis lives under its own /api/feeds prefix.
         self.feeds_router = APIRouter(prefix="/api/feeds", tags=["feeds"])
         self._register_routes()
 
     def _register_routes(self) -> None:
+        # Dependency that enforces auth on state-changing / injection routes.
+        auth = [Depends(self._authenticator.dependency())]
         self.router.add_api_route(
             "", self.create_event, methods=["POST"],
             response_model=SecurityEventResponse, status_code=201,
+            dependencies=auth,
         )
         self.router.add_api_route(
             "", self.list_events, methods=["GET"],
@@ -88,22 +94,27 @@ class SecurityEventController:
         self.router.add_api_route(
             "/{event_id}/acknowledge", self.acknowledge, methods=["POST"],
             response_model=SecurityEventResponse,
+            dependencies=auth,
         )
         self.router.add_api_route(
             "/{event_id}/resolve", self.resolve, methods=["POST"],
             response_model=SecurityEventResponse,
+            dependencies=auth,
         )
         self.router.add_api_route(
             "/{event_id}/dismiss", self.dismiss, methods=["POST"],
             response_model=SecurityEventResponse,
+            dependencies=auth,
         )
         self.router.add_api_route(
             "/clear-resolved", self.clear_resolved, methods=["POST"],
             response_model=ClearResolvedResponse,
+            dependencies=auth,
         )
         self.feeds_router.add_api_route(
             "/{camera_id}/frame", self.analyze_frame, methods=["POST"],
             response_model=AnalyzeFrameResponse,
+            dependencies=auth,
         )
 
     async def create_event(
@@ -151,6 +162,9 @@ class SecurityEventController:
             event=event,
             is_candidate=result.is_candidate,
             candidate_reason=result.candidate_reason,
+            is_throttled=result.is_throttled,
+            throttle_state=result.throttle_state,
+            throttle_reason=result.throttle_reason,
         )
 
     async def list_events(self, limit: int = 50) -> list[SecurityEventResponse]:
