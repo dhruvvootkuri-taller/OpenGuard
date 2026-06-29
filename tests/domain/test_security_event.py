@@ -40,7 +40,26 @@ def test_acknowledge_transition():
     assert event.acknowledged_by == "operator-42"
 
 
-def test_invalid_transition_raises():
+def test_resolve_from_detected_is_allowed():
+    """resolve() is allowed from any active state (including freshly DETECTED)."""
     event = _event()
+    event.resolve()
+    assert event.status == SecurityEventStatus.RESOLVED
+
+
+def test_invalid_transition_raises():
+    """Resolving/dismissing an already-terminal event is the invalid transition."""
+    event = _event()
+    event.resolve()
+    assert event.status == SecurityEventStatus.RESOLVED
+
     with pytest.raises(DomainValidationError):
-        event.resolve()  # cannot resolve a freshly detected event
+        event.resolve()  # cannot resolve an already-resolved event
+
+    with pytest.raises(DomainValidationError):
+        event.dismiss()  # cannot dismiss an already-resolved event
+
+    dismissed = _event()
+    dismissed.dismiss()
+    with pytest.raises(DomainValidationError):
+        dismissed.dismiss()  # cannot dismiss an already-dismissed event
