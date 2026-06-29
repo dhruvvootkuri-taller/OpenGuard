@@ -81,6 +81,18 @@ class SecurityEventResponse(BaseModel):
     detections: list[DetectionBoxResponse]
 
 
+class CameraResponse(BaseModel):
+    """A single operator-configured camera feed.
+
+    The dashboard builds its video wall from this list. An empty list means no
+    cameras are configured and the wall renders its empty state.
+    """
+
+    id: str
+    zone: str
+    armed: bool
+
+
 class AnalyzeFrameRequest(BaseModel):
     """A single frame captured from a playing MP4 feed.
 

@@ -17,6 +17,44 @@ def _env(key: str, default: str | None = None) -> str:
 
 
 @dataclass(frozen=True)
+class CameraConfig:
+    """A single configured camera feed.
+
+    These are operator-configured real cameras — there are NO baked-in demo
+    cameras. An unset/empty ``CAMERAS`` env yields an empty list and the
+    dashboard renders its 'No cameras configured' empty state.
+    """
+
+    id: str
+    zone: str
+    armed: bool
+
+
+def _parse_cameras(raw: str) -> tuple[CameraConfig, ...]:
+    """Parse the ``CAMERAS`` env value into camera configs.
+
+    Format: semicolon-separated entries, each ``id|zone|armed`` where ``armed``
+    is an optional truthy flag (``true``/``1``/``yes``/``armed``). Whitespace is
+    trimmed; blank/malformed entries (missing id) are skipped. An empty string
+    yields an empty tuple — i.e. no cameras configured.
+    """
+    cameras: list[CameraConfig] = []
+    for entry in raw.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = [p.strip() for p in entry.split("|")]
+        cam_id = parts[0] if parts else ""
+        if not cam_id:
+            continue
+        zone = parts[1] if len(parts) > 1 and parts[1] else cam_id
+        armed_token = parts[2].lower() if len(parts) > 2 else ""
+        armed = armed_token in {"true", "1", "yes", "armed", "on"}
+        cameras.append(CameraConfig(id=cam_id, zone=zone, armed=armed))
+    return tuple(cameras)
+
+
+@dataclass(frozen=True)
 class Settings:
     # Redis
     redis_url: str
@@ -58,6 +96,9 @@ class Settings:
     # Emergency de-duplication: collapse repeated emergency frames from the
     # same camera into a single incident for this many seconds (cooldown).
     emergency_dedup_window_seconds: int
+
+    # Camera feeds (operator-configured; empty = no cameras configured).
+    cameras: tuple[CameraConfig, ...]
 
     # App
     app_host: str
@@ -110,6 +151,9 @@ class Settings:
             emergency_dedup_window_seconds=int(
                 os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
             ),
+            # No baked-in demo cameras: default to an empty list so the
+            # dashboard shows its empty state until real cameras are configured.
+            cameras=_parse_cameras(os.getenv("CAMERAS", "")),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
         )

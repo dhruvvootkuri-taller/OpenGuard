@@ -3,6 +3,7 @@ import {
   acknowledgeEvent,
   clearResolvedEvents,
   dismissEvent,
+  fetchCameras,
   fetchRecentEvents,
   resolveEvent,
 } from './api/eventsApi';
@@ -15,13 +16,6 @@ import type { MonitorFeed, SecurityEvent } from './types';
 
 const OPERATOR_ID = 'operator-console';
 
-const FEEDS: MonitorFeed[] = [
-  { id: 'CAM-01', zone: 'Main Entrance', armed: true },
-  { id: 'CAM-02', zone: 'Parking Structure', armed: false },
-  { id: 'CAM-03', zone: 'Secure Perimeter', armed: true },
-  { id: 'CAM-04', zone: 'Loading Dock', armed: false },
-];
-
 function mergeEvent(prev: SecurityEvent[], next: SecurityEvent): SecurityEvent[] {
   const without = prev.filter((e) => e.id !== next.id);
   return [next, ...without].slice(0, 100);
@@ -29,9 +23,27 @@ function mergeEvent(prev: SecurityEvent[], next: SecurityEvent): SecurityEvent[]
 
 export default function App() {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
+  const [feeds, setFeeds] = useState<MonitorFeed[]>([]);
   const [online, setOnline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => new Date());
+
+  // Load the operator-configured camera feeds. There are no baked-in demo
+  // cameras: with none configured the wall renders its empty state.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const cameras = await fetchCameras();
+        if (active) setFeeds(cameras);
+      } catch (err) {
+        if (active) setError((err as Error).message);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Poll the backend for the authoritative event list.
   useEffect(() => {
@@ -138,15 +150,21 @@ export default function App() {
 
       <div className="console__grid">
         <main className="console__wall">
-          <div className="wall">
-            {FEEDS.map((feed) => (
-              <VideoMonitor
-                key={feed.id}
-                feed={feed}
-                onEvent={handleMonitorEvent}
-              />
-            ))}
-          </div>
+          {feeds.length > 0 ? (
+            <div className="wall">
+              {feeds.map((feed) => (
+                <VideoMonitor
+                  key={feed.id}
+                  feed={feed}
+                  onEvent={handleMonitorEvent}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="wall wall--empty">
+              <p className="empty">No cameras configured</p>
+            </div>
+          )}
           <CallHistory events={events} />
         </main>
 

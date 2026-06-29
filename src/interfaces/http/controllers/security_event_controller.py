@@ -8,6 +8,7 @@ web framework. Never touches domain entities or infrastructure directly.
 from __future__ import annotations
 
 import dataclasses
+from typing import Iterable, Sequence
 
 from fastapi import APIRouter, HTTPException
 
@@ -44,6 +45,7 @@ from src.interfaces.http.schemas import (
     AcknowledgeRequest,
     AnalyzeFrameRequest,
     AnalyzeFrameResponse,
+    CameraResponse,
     ClearResolvedRequest,
     ClearResolvedResponse,
     ProcessDetectionRequest,
@@ -63,6 +65,7 @@ class SecurityEventController:
         resolve_event: ResolveEventUseCase,
         dismiss_event: DismissEventUseCase,
         clear_resolved_events: ClearResolvedEventsUseCase,
+        cameras: Iterable[CameraResponse] = (),
     ) -> None:
         self._process_detection = process_detection
         self._acknowledge_event = acknowledge_event
@@ -71,9 +74,14 @@ class SecurityEventController:
         self._resolve_event = resolve_event
         self._dismiss_event = dismiss_event
         self._clear_resolved_events = clear_resolved_events
+        # Operator-configured camera feeds. Empty by default — there are NO
+        # baked-in demo cameras; the dashboard shows its empty state instead.
+        self._cameras: tuple[CameraResponse, ...] = tuple(cameras)
         self.router = APIRouter(prefix="/api/events", tags=["events"])
         # Feed-frame analysis lives under its own /api/feeds prefix.
         self.feeds_router = APIRouter(prefix="/api/feeds", tags=["feeds"])
+        # Camera configuration lives under /api/cameras.
+        self.cameras_router = APIRouter(prefix="/api/cameras", tags=["cameras"])
         self._register_routes()
 
     def _register_routes(self) -> None:
@@ -105,6 +113,14 @@ class SecurityEventController:
             "/{camera_id}/frame", self.analyze_frame, methods=["POST"],
             response_model=AnalyzeFrameResponse,
         )
+        self.cameras_router.add_api_route(
+            "", self.list_cameras, methods=["GET"],
+            response_model=list[CameraResponse],
+        )
+
+    async def list_cameras(self) -> Sequence[CameraResponse]:
+        """Return the operator-configured camera feeds (possibly empty)."""
+        return self._cameras
 
     async def create_event(
         self, request: ProcessDetectionRequest

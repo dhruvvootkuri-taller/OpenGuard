@@ -33,5 +33,6 @@ def create_app(
 
     app.include_router(security_event_controller.router)
     app.include_router(security_event_controller.feeds_router)
+    app.include_router(security_event_controller.cameras_router)
     app.include_router(voice_agent_controller.router)
     return app
