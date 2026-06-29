@@ -9,6 +9,15 @@ import os
 from dataclasses import dataclass
 
 
+def _parse_api_keys(raw: str) -> frozenset[str]:
+    """Parse a comma-separated list of API keys into a set.
+
+    Blank/whitespace-only entries are ignored. An empty/unset value yields an
+    empty set, which makes the auth layer FAIL CLOSED (deny everything).
+    """
+    return frozenset(k.strip() for k in raw.split(",") if k.strip())
+
+
 def _env(key: str, default: str | None = None) -> str:
     value = os.getenv(key, default)
     if value is None:
@@ -58,6 +67,13 @@ class Settings:
     # Emergency de-duplication: collapse repeated emergency frames from the
     # same camera into a single incident for this many seconds (cooldown).
     emergency_dedup_window_seconds: int
+
+    # API authentication
+    # Set of accepted API keys / bearer tokens. Requests to protected
+    # endpoints must present one of these via `Authorization: Bearer <key>`
+    # or `X-API-Key: <key>`. An EMPTY set means auth is unconfigured, which
+    # makes the auth layer FAIL CLOSED — every protected request is denied.
+    api_keys: frozenset[str]
 
     # App
     app_host: str
@@ -110,6 +126,8 @@ class Settings:
             emergency_dedup_window_seconds=int(
                 os.getenv("EMERGENCY_DEDUP_WINDOW_SECONDS", "60")
             ),
+            # Never hardcode keys. Unset -> empty set -> auth fails closed.
+            api_keys=_parse_api_keys(os.getenv("OPEN_GUARD_API_KEYS", "")),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
         )
