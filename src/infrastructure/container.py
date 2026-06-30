@@ -213,6 +213,11 @@ class Container:
             telephony=self.telephony,
             publisher=self.publisher,
             on_call_number=self.settings.on_call_number,
+            call_record_repository=self.call_record_repository,
+            on_call_numbers=self.settings.escalation_on_call_numbers,
+            max_retries_per_contact=self.settings.escalation_max_retries_per_contact,
+            answer_timeout_seconds=self.settings.escalation_answer_timeout_seconds,
+            poll_interval_seconds=self.settings.escalation_poll_interval_seconds,
         )
 
     def place_emergency_call_use_case(self) -> PlaceEmergencyCallUseCase:

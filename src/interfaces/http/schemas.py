@@ -78,6 +78,9 @@ class SecurityEventResponse(BaseModel):
     description: str
     detected_at: str
     escalated: bool
+    escalation_outcome: str = "pending"
+    escalation_reached_contact: Optional[str] = None
+    escalation_attempts: int = 0
     detections: list[DetectionBoxResponse]
 
 

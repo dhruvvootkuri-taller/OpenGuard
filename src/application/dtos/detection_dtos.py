@@ -42,6 +42,14 @@ class SecurityEventDTO:
     description: str
     detected_at: str
     escalated: bool
+    # Final outcome of trying to reach an on-call human: "pending" (not run /
+    # in flight), "reached" (a contact answered) or "unreachable" (every
+    # configured contact exhausted without an answer).
+    escalation_outcome: str = "pending"
+    # The contact reached, when outcome == "reached".
+    escalation_reached_contact: Optional[str] = None
+    # How many distinct contacts were attempted during escalation.
+    escalation_attempts: int = 0
     detections: list[DetectionBoxDTO] = field(default_factory=list)
 
 

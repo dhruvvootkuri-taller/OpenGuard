@@ -733,6 +733,16 @@ body {
   font-weight: 800;
 }
 
+.history-item__check--reached {
+  color: var(--ok);
+}
+.history-item__check--unreachable {
+  color: var(--crit);
+}
+.history-item__check--pending {
+  color: var(--warn);
+}
+
 .history-item__cam {
   font-weight: 700;
 }
@@ -742,6 +752,30 @@ body {
   text-transform: uppercase;
   font-size: 0.62rem;
   letter-spacing: 0.04em;
+}
+
+.history-item__outcome {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+
+.history-item__outcome--reached {
+  background: rgba(63, 185, 80, 0.16);
+  color: var(--ok);
+}
+
+.history-item__outcome--unreachable {
+  background: rgba(248, 81, 73, 0.16);
+  color: var(--crit);
+}
+
+.history-item__outcome--pending {
+  background: rgba(210, 153, 34, 0.16);
+  color: var(--warn);
 }
 
 .history-item__time {

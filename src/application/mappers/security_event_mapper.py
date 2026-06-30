@@ -21,6 +21,9 @@ class SecurityEventMapper:
             description=event.description,
             detected_at=event.detected_at.isoformat(),
             escalated=event.requires_human_escalation(),
+            escalation_outcome=event.escalation_outcome.value,
+            escalation_reached_contact=event.escalation_reached_contact,
+            escalation_attempts=event.escalation_attempts,
             detections=[
                 DetectionBoxDTO(
                     label=d.label,
