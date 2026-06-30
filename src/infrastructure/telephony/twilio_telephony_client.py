@@ -1,13 +1,33 @@
 """Twilio implementation of TelephonyPort.
 
-Places outbound voice calls and SMS messages via the Twilio REST API.
+Places outbound voice calls and SMS messages via the Twilio REST API and maps
+Twilio's call status onto the provider-agnostic CallOutcome the escalation
+logic reasons about.
 """
 
 from __future__ import annotations
 
 from twilio.rest import Client as TwilioClient
 
-from src.application.ports.notification_port import TelephonyPort, VoiceMessage
+from src.application.ports.notification_port import (
+    CallOutcome,
+    TelephonyPort,
+    VoiceMessage,
+)
+
+# Twilio call.status -> provider-agnostic CallOutcome.
+# https://www.twilio.com/docs/voice/api/call-resource#call-status-values
+_STATUS_MAP = {
+    "queued": CallOutcome.PENDING,
+    "initiated": CallOutcome.PENDING,
+    "ringing": CallOutcome.PENDING,
+    "in-progress": CallOutcome.ANSWERED,
+    "completed": CallOutcome.ANSWERED,
+    "busy": CallOutcome.BUSY,
+    "no-answer": CallOutcome.NO_ANSWER,
+    "failed": CallOutcome.FAILED,
+    "canceled": CallOutcome.FAILED,
+}
 
 
 class TwilioTelephonyClient(TelephonyPort):
@@ -24,6 +44,13 @@ class TwilioTelephonyClient(TelephonyPort):
             return call.sid
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Twilio call failed: {exc}") from exc
+
+    async def poll_call_status(self, provider_call_id: str) -> CallOutcome:
+        try:
+            call = self._client.calls(provider_call_id).fetch()
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"Twilio status fetch failed: {exc}") from exc
+        return _STATUS_MAP.get(call.status, CallOutcome.PENDING)
 
     async def send_sms(self, to_number: str, body: str) -> str:
         try:

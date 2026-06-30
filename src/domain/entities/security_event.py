@@ -29,6 +29,21 @@ class SecurityEventStatus(str, Enum):
     DISMISSED = "dismissed"
 
 
+class EscalationOutcome(str, Enum):
+    """Final outcome of trying to reach an on-call human for an event.
+
+    ``PENDING`` means escalation has not run or is still in flight.
+    ``REACHED`` means a contact answered the escalation call.
+    ``UNREACHABLE`` means every configured contact was tried (with retries) and
+    none answered — the dashboard must surface this so help can be summoned by
+    other means.
+    """
+
+    PENDING = "pending"
+    REACHED = "reached"
+    UNREACHABLE = "unreachable"
+
+
 # Statuses that take an event out of the active views permanently.
 _TERMINAL_STATUSES = frozenset(
     {SecurityEventStatus.RESOLVED, SecurityEventStatus.DISMISSED}
@@ -56,6 +71,11 @@ class SecurityEvent:
         default_factory=lambda: datetime.now(timezone.utc)
     )
     acknowledged_by: str | None = None
+    escalation_outcome: EscalationOutcome = EscalationOutcome.PENDING
+    # The contact (phone number) actually reached, when REACHED.
+    escalation_reached_contact: str | None = None
+    # How many distinct contacts were attempted during escalation.
+    escalation_attempts: int = 0
 
     def __post_init__(self) -> None:
         if not self.camera_id or not self.camera_id.strip():
@@ -81,6 +101,24 @@ class SecurityEvent:
             SecurityEventStatus.ALERTING,
             {SecurityEventStatus.DETECTED, SecurityEventStatus.ANALYZING},
         )
+
+    def record_escalation_reached(self, contact: str, *, attempts: int) -> None:
+        """Record that escalation reached a human on ``contact``."""
+        if not contact or not contact.strip():
+            raise DomainValidationError("contact is required to record a reach")
+        if attempts < 1:
+            raise DomainValidationError("attempts must be at least 1")
+        self.escalation_outcome = EscalationOutcome.REACHED
+        self.escalation_reached_contact = contact
+        self.escalation_attempts = attempts
+
+    def record_escalation_unreachable(self, *, attempts: int) -> None:
+        """Record that escalation exhausted every contact without an answer."""
+        if attempts < 1:
+            raise DomainValidationError("attempts must be at least 1")
+        self.escalation_outcome = EscalationOutcome.UNREACHABLE
+        self.escalation_reached_contact = None
+        self.escalation_attempts = attempts
 
     def acknowledge(self, operator_id: str) -> None:
         if not operator_id or not operator_id.strip():

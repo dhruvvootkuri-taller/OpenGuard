@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from src.infrastructure.config.settings import _parse_cameras
 from src.interfaces.http.app import create_app
+from src.interfaces.http.auth import Authenticator
 from src.interfaces.http.controllers.security_event_controller import (
     SecurityEventController,
 )
@@ -30,7 +31,7 @@ from src.interfaces.http.schemas import CameraResponse
 
 def _build_controller(cameras: list[CameraResponse]) -> SecurityEventController:
     # Use cases are never invoked by the cameras route, so None stand-ins are
-    # fine here — we only exercise GET /api/cameras.
+    # fine here — we only exercise GET /api/cameras (a public read endpoint).
     return SecurityEventController(
         process_detection=None,  # type: ignore[arg-type]
         acknowledge_event=None,  # type: ignore[arg-type]
@@ -39,13 +40,17 @@ def _build_controller(cameras: list[CameraResponse]) -> SecurityEventController:
         resolve_event=None,  # type: ignore[arg-type]
         dismiss_event=None,  # type: ignore[arg-type]
         clear_resolved_events=None,  # type: ignore[arg-type]
+        authenticator=Authenticator(api_keys=()),
         cameras=cameras,
     )
 
 
 def _client(cameras: list[CameraResponse]) -> TestClient:
     controller = _build_controller(cameras)
-    voice = VoiceAgentController(place_emergency_call=None)  # type: ignore[arg-type]
+    voice = VoiceAgentController(
+        place_emergency_call=None,  # type: ignore[arg-type]
+        authenticator=Authenticator(api_keys=()),
+    )
     app = create_app(
         security_event_controller=controller,
         voice_agent_controller=voice,

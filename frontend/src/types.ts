@@ -16,8 +16,21 @@ export interface SecurityEvent {
   description: string;
   detected_at: string;
   escalated: boolean;
+  /**
+   * Final outcome of trying to reach an on-call human:
+   * - "pending"     — escalation has not run or is still in flight
+   * - "reached"     — a contact answered the escalation call
+   * - "unreachable" — every configured contact was exhausted without an answer
+   */
+  escalation_outcome?: EscalationOutcome;
+  /** The contact reached, when escalation_outcome === "reached". */
+  escalation_reached_contact?: string | null;
+  /** How many distinct contacts were attempted during escalation. */
+  escalation_attempts?: number;
   detections: DetectionBox[];
 }
+
+export type EscalationOutcome = 'pending' | 'reached' | 'unreachable';
 
 /** Terminal lifecycle statuses — these are off the live/active views. */
 export const TERMINAL_STATUSES = ['resolved', 'dismissed'] as const;
@@ -63,7 +76,7 @@ export interface AnalyzeFrameResponse {
 
 /** A single monitor on the video wall. */
 export interface MonitorFeed {
-  /** Stable slot id, e.g. "CAM-01". */
+  /** Stable per-camera slot id from the configured camera list. */
   id: string;
   /** Human label for the zone the camera watches. */
   zone: string;

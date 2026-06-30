@@ -9,6 +9,21 @@ import os
 from dataclasses import dataclass
 
 
+def _csv(value: str) -> tuple[str, ...]:
+    """Parse a comma-separated env value into an ordered tuple, trimming
+    whitespace and dropping empties while preserving order."""
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _parse_api_keys(raw: str) -> frozenset[str]:
+    """Parse a comma-separated list of API keys into a set.
+
+    Blank/whitespace-only entries are ignored. An empty/unset value yields an
+    empty set, which makes the auth layer FAIL CLOSED (deny everything).
+    """
+    return frozenset(k.strip() for k in raw.split(",") if k.strip())
+
+
 def _env(key: str, default: str | None = None) -> str:
     value = os.getenv(key, default)
     if value is None:
@@ -82,6 +97,16 @@ class Settings:
     twilio_from_number: str
     on_call_number: str
 
+    # Escalation reliability: ordered on-call contact list + retry/fallback.
+    # When an escalation call is not answered we retry the same contact up to
+    # ``escalation_max_retries_per_contact`` times, then fall back to the next
+    # contact. The event is marked UNREACHABLE only after every contact is
+    # exhausted. Polling captures the provider call outcome.
+    escalation_on_call_numbers: tuple[str, ...]
+    escalation_max_retries_per_contact: int
+    escalation_answer_timeout_seconds: int
+    escalation_poll_interval_seconds: float
+
     # Event lifecycle
     # An active event with no new frames/detections for this many seconds is
     # auto-resolved so the dashboard reflects current activity, not a backlog.
@@ -99,6 +124,23 @@ class Settings:
 
     # Camera feeds (operator-configured; empty = no cameras configured).
     cameras: tuple[CameraConfig, ...]
+
+    # Vision cost controls / rate limiting (protect Anthropic spend + DoS).
+    # Per-camera minimum interval between ANALYSED frames (seconds); excess
+    # frames are skipped server-side. Global caps on concurrent in-flight calls
+    # and calls-per-minute. Daily call budget acts as a kill switch that halts
+    # analysis when exceeded. Any limit set to 0 disables that specific limit.
+    vision_per_camera_min_interval_seconds: float
+    vision_max_concurrent_calls: int
+    vision_max_calls_per_minute: int
+    vision_daily_budget_calls: int
+
+    # API authentication
+    # Set of accepted API keys / bearer tokens. Requests to protected
+    # endpoints must present one of these via `Authorization: Bearer <key>`
+    # or `X-API-Key: <key>`. An EMPTY set means auth is unconfigured, which
+    # makes the auth layer FAIL CLOSED — every protected request is denied.
+    api_keys: frozenset[str]
 
     # App
     app_host: str
@@ -130,6 +172,21 @@ class Settings:
             twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
             twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
             on_call_number=os.getenv("ON_CALL_NUMBER", ""),
+            # Ordered on-call list. Defaults to the single ON_CALL_NUMBER so
+            # existing single-contact setups keep working unchanged.
+            escalation_on_call_numbers=(
+                _csv(os.getenv("ESCALATION_ON_CALL_NUMBERS", ""))
+                or _csv(os.getenv("ON_CALL_NUMBER", ""))
+            ),
+            escalation_max_retries_per_contact=int(
+                os.getenv("ESCALATION_MAX_RETRIES_PER_CONTACT", "1")
+            ),
+            escalation_answer_timeout_seconds=int(
+                os.getenv("ESCALATION_ANSWER_TIMEOUT_SECONDS", "30")
+            ),
+            escalation_poll_interval_seconds=float(
+                os.getenv("ESCALATION_POLL_INTERVAL_SECONDS", "2")
+            ),
             event_inactivity_ttl_seconds=int(
                 os.getenv("EVENT_INACTIVITY_TTL_SECONDS", "300")
             ),
@@ -154,6 +211,24 @@ class Settings:
             # No baked-in demo cameras: default to an empty list so the
             # dashboard shows its empty state until real cameras are configured.
             cameras=_parse_cameras(os.getenv("CAMERAS", "")),
+            # Vision cost controls. Sane defaults: analyse at most one frame per
+            # camera every 2s, at most 4 concurrent and 60 calls/minute globally,
+            # and stop after 5000 calls/day (kill switch). Set any to 0 to
+            # disable that limit.
+            vision_per_camera_min_interval_seconds=float(
+                os.getenv("VISION_PER_CAMERA_MIN_INTERVAL_SECONDS", "2.0")
+            ),
+            vision_max_concurrent_calls=int(
+                os.getenv("VISION_MAX_CONCURRENT_CALLS", "4")
+            ),
+            vision_max_calls_per_minute=int(
+                os.getenv("VISION_MAX_CALLS_PER_MINUTE", "60")
+            ),
+            vision_daily_budget_calls=int(
+                os.getenv("VISION_DAILY_BUDGET_CALLS", "5000")
+            ),
+            # Never hardcode keys. Unset -> empty set -> auth fails closed.
+            api_keys=_parse_api_keys(os.getenv("OPEN_GUARD_API_KEYS", "")),
             app_host=os.getenv("APP_HOST", "0.0.0.0"),
             app_port=int(os.getenv("APP_PORT", "8000")),
         )

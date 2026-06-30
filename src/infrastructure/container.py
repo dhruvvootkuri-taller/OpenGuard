@@ -60,6 +60,9 @@ from src.infrastructure.persistence.redis_feed_clip_repository import (
 from src.infrastructure.persistence.redis_security_event_repository import (
     RedisSecurityEventRepository,
 )
+from src.infrastructure.persistence.redis_vision_rate_limiter import (
+    RedisVisionRateLimiter,
+)
 from src.infrastructure.tasks.celery_app import create_celery_app
 from src.infrastructure.vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 from src.infrastructure.tasks.celery_task_queue import CeleryTaskQueue
@@ -118,6 +121,18 @@ class Container:
         return InMemoryDetectionConfirmationTracker(
             window=self.settings.detection_confirmation_window,
             required=self.settings.detection_confirmation_required,
+        )
+
+    @cached_property
+    def vision_rate_limiter(self) -> RedisVisionRateLimiter:
+        return RedisVisionRateLimiter(
+            self.redis,
+            per_camera_min_interval_seconds=(
+                self.settings.vision_per_camera_min_interval_seconds
+            ),
+            max_concurrent_calls=self.settings.vision_max_concurrent_calls,
+            max_calls_per_minute=self.settings.vision_max_calls_per_minute,
+            daily_budget_calls=self.settings.vision_daily_budget_calls,
         )
 
     @cached_property
@@ -187,6 +202,7 @@ class Container:
             min_confidence=self.settings.detection_min_confidence,
             min_threat_score=self.settings.detection_min_threat_score,
             active_tracker=self.active_emergency_tracker,
+            rate_limiter=self.vision_rate_limiter,
         )
 
     def escalate_event_use_case(self) -> EscalateEventUseCase:
@@ -197,6 +213,11 @@ class Container:
             telephony=self.telephony,
             publisher=self.publisher,
             on_call_number=self.settings.on_call_number,
+            call_record_repository=self.call_record_repository,
+            on_call_numbers=self.settings.escalation_on_call_numbers,
+            max_retries_per_contact=self.settings.escalation_max_retries_per_contact,
+            answer_timeout_seconds=self.settings.escalation_answer_timeout_seconds,
+            poll_interval_seconds=self.settings.escalation_poll_interval_seconds,
         )
 
     def place_emergency_call_use_case(self) -> PlaceEmergencyCallUseCase:

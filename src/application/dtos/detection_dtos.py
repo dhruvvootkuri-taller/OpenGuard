@@ -42,6 +42,14 @@ class SecurityEventDTO:
     description: str
     detected_at: str
     escalated: bool
+    # Final outcome of trying to reach an on-call human: "pending" (not run /
+    # in flight), "reached" (a contact answered) or "unreachable" (every
+    # configured contact exhausted without an answer).
+    escalation_outcome: str = "pending"
+    # The contact reached, when outcome == "reached".
+    escalation_reached_contact: Optional[str] = None
+    # How many distinct contacts were attempted during escalation.
+    escalation_attempts: int = 0
     detections: list[DetectionBoxDTO] = field(default_factory=list)
 
 
@@ -91,6 +99,12 @@ class AnalyzeFrameOutputDTO:
     gated out (below threshold or not yet confirmed). A candidate is a
     low-severity "watch this" signal for the UI — it never creates an event and
     never places a call. ``candidate_reason`` explains why it was gated.
+
+    ``is_throttled`` is ``True`` when the frame was NOT analysed at all because
+    a vision cost-control limit was hit (per-camera interval, global
+    concurrency/rate cap, or the daily budget kill switch). ``throttle_state``
+    is a stable machine-readable code (see ``vision_rate_limiter_port``) and
+    ``throttle_reason`` is a human-readable explanation for the UI.
     """
 
     camera_id: str
@@ -100,3 +114,6 @@ class AnalyzeFrameOutputDTO:
     event: Optional[SecurityEventDTO] = None
     is_candidate: bool = False
     candidate_reason: str = ""
+    is_throttled: bool = False
+    throttle_state: str = ""
+    throttle_reason: str = ""

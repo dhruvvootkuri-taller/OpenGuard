@@ -78,6 +78,9 @@ class SecurityEventResponse(BaseModel):
     description: str
     detected_at: str
     escalated: bool
+    escalation_outcome: str = "pending"
+    escalation_reached_contact: Optional[str] = None
+    escalation_attempts: int = 0
     detections: list[DetectionBoxResponse]
 
 
@@ -119,3 +122,10 @@ class AnalyzeFrameResponse(BaseModel):
     # signal; it never created an event and never placed a call.
     is_candidate: bool = False
     candidate_reason: str = ""
+    # A throttled frame was NOT analysed because a vision cost-control limit was
+    # hit (per-camera interval, global concurrency/rate cap, or the daily budget
+    # kill switch). ``throttle_state`` is a stable machine-readable code; the UI
+    # can surface ``throttle_reason`` (e.g. show the budget/kill-switch banner).
+    is_throttled: bool = False
+    throttle_state: str = ""
+    throttle_reason: str = ""

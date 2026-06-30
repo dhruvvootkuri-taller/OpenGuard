@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from src.infrastructure.container import Container
 from src.interfaces.http.app import create_app
+from src.interfaces.http.auth import Authenticator
 from src.interfaces.http.controllers.security_event_controller import (
     SecurityEventController,
 )
@@ -24,6 +25,9 @@ from src.interfaces.http.controllers.voice_agent_controller import (
 def build_app():
     container = Container()
 
+    # Keys come from config (env). Empty set => auth fails closed (deny).
+    authenticator = Authenticator(container.settings.api_keys)
+
     controller = SecurityEventController(
         process_detection=container.process_detection_use_case(),
         acknowledge_event=container.acknowledge_event_use_case(),
@@ -32,6 +36,7 @@ def build_app():
         resolve_event=container.resolve_event_use_case(),
         dismiss_event=container.dismiss_event_use_case(),
         clear_resolved_events=container.clear_resolved_events_use_case(),
+        authenticator=authenticator,
         cameras=[
             CameraResponse(id=cam.id, zone=cam.zone, armed=cam.armed)
             for cam in container.settings.cameras
@@ -40,6 +45,7 @@ def build_app():
 
     voice_controller = VoiceAgentController(
         place_emergency_call=container.place_emergency_call_use_case(),
+        authenticator=authenticator,
     )
 
     return create_app(

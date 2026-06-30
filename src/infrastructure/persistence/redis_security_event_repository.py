@@ -11,7 +11,11 @@ from datetime import datetime
 
 import redis.asyncio as redis
 
-from src.domain.entities.security_event import SecurityEvent, SecurityEventStatus
+from src.domain.entities.security_event import (
+    EscalationOutcome,
+    SecurityEvent,
+    SecurityEventStatus,
+)
 from src.domain.repositories.security_event_repository import (
     SecurityEventRepository,
 )
@@ -68,6 +72,9 @@ class RedisSecurityEventRepository(SecurityEventRepository):
             "detected_at": event.detected_at.isoformat(),
             "last_seen_at": event.last_seen_at.isoformat(),
             "acknowledged_by": event.acknowledged_by,
+            "escalation_outcome": event.escalation_outcome.value,
+            "escalation_reached_contact": event.escalation_reached_contact,
+            "escalation_attempts": event.escalation_attempts,
             "threat": {
                 "severity": event.threat_level.severity.name,
                 "confidence": event.threat_level.confidence,
@@ -116,4 +123,9 @@ class RedisSecurityEventRepository(SecurityEventRepository):
         # Restore persisted lifecycle state directly (bypassing transitions).
         event.status = SecurityEventStatus(record["status"])
         event.acknowledged_by = record.get("acknowledged_by")
+        event.escalation_outcome = EscalationOutcome(
+            record.get("escalation_outcome", EscalationOutcome.PENDING.value)
+        )
+        event.escalation_reached_contact = record.get("escalation_reached_contact")
+        event.escalation_attempts = record.get("escalation_attempts", 0)
         return event
