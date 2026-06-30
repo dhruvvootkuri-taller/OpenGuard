@@ -207,6 +207,16 @@ body {
   }
 }
 
+.wall--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
 .monitor {
   background: var(--panel);
   border: 1px solid var(--border);

@@ -1,12 +1,27 @@
 import type {
   AnalyzeFrameRequest,
   AnalyzeFrameResponse,
+  MonitorFeed,
   ProcessDetectionRequest,
   SecurityEvent,
 } from '../types';
 
 const BASE_URL = '/api/events';
 const FEEDS_URL = '/api/feeds';
+const CAMERAS_URL = '/api/cameras';
+
+/**
+ * Load the operator-configured camera feeds that make up the video wall.
+ * There are NO baked-in demo cameras: an empty list means none are configured
+ * and the dashboard renders its empty state.
+ */
+export async function fetchCameras(): Promise<MonitorFeed[]> {
+  const res = await fetch(CAMERAS_URL);
+  if (!res.ok) {
+    throw new Error(`Failed to load cameras: ${res.status}`);
+  }
+  return (await res.json()) as MonitorFeed[];
+}
 
 export async function fetchRecentEvents(limit = 50): Promise<SecurityEvent[]> {
   const res = await fetch(`${BASE_URL}?limit=${limit}`);

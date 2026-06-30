@@ -16,6 +16,7 @@ from src.interfaces.http.auth import Authenticator
 from src.interfaces.http.controllers.security_event_controller import (
     SecurityEventController,
 )
+from src.interfaces.http.schemas import CameraResponse
 from src.interfaces.http.controllers.voice_agent_controller import (
     VoiceAgentController,
 )
@@ -36,6 +37,10 @@ def build_app():
         dismiss_event=container.dismiss_event_use_case(),
         clear_resolved_events=container.clear_resolved_events_use_case(),
         authenticator=authenticator,
+        cameras=[
+            CameraResponse(id=cam.id, zone=cam.zone, armed=cam.armed)
+            for cam in container.settings.cameras
+        ],
     )
 
     voice_controller = VoiceAgentController(

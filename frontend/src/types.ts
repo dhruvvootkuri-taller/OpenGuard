@@ -76,7 +76,7 @@ export interface AnalyzeFrameResponse {
 
 /** A single monitor on the video wall. */
 export interface MonitorFeed {
-  /** Stable slot id, e.g. "CAM-01". */
+  /** Stable per-camera slot id from the configured camera list. */
   id: string;
   /** Human label for the zone the camera watches. */
   zone: string;
