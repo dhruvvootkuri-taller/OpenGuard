@@ -10,6 +10,21 @@ const BASE_URL = '/api/events';
 const FEEDS_URL = '/api/feeds';
 const CAMERAS_URL = '/api/cameras';
 
+/** Configured API key for protected requests (empty in unauthenticated dev). */
+const API_KEY = import.meta.env.VITE_OPEN_GUARD_API_KEY ?? '';
+
+/**
+ * Headers for protected (state-changing / call-placing) requests. Attaches the
+ * configured API key so requests pass the backend auth layer; when no key is
+ * configured the header is omitted (fine against a backend with auth unset).
+ * GET reads are public and use a bare fetch.
+ */
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers.Authorization = `Bearer ${API_KEY}`;
+  return headers;
+}
+
 /**
  * Load the operator-configured camera feeds that make up the video wall.
  * There are NO baked-in demo cameras: an empty list means none are configured
@@ -37,7 +52,7 @@ export async function acknowledgeEvent(
 ): Promise<SecurityEvent> {
   const res = await fetch(`${BASE_URL}/${eventId}/acknowledge`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ operator_id: operatorId }),
   });
   if (!res.ok) {
@@ -51,7 +66,7 @@ export async function acknowledgeEvent(
 export async function resolveEvent(eventId: string): Promise<SecurityEvent> {
   const res = await fetch(`${BASE_URL}/${eventId}/resolve`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
   });
   if (!res.ok) {
     throw new Error(`Failed to resolve event: ${res.status}`);
@@ -63,7 +78,7 @@ export async function resolveEvent(eventId: string): Promise<SecurityEvent> {
 export async function dismissEvent(eventId: string): Promise<SecurityEvent> {
   const res = await fetch(`${BASE_URL}/${eventId}/dismiss`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
   });
   if (!res.ok) {
     throw new Error(`Failed to dismiss event: ${res.status}`);
@@ -78,7 +93,7 @@ export async function clearResolvedEvents(
 ): Promise<number> {
   const res = await fetch(`${BASE_URL}/clear-resolved`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ include_active: includeActive }),
   });
   if (!res.ok) {
@@ -97,7 +112,7 @@ export async function processDetection(
 ): Promise<SecurityEvent> {
   const res = await fetch(BASE_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -117,7 +132,7 @@ export async function analyzeFrame(
 ): Promise<AnalyzeFrameResponse> {
   const res = await fetch(`${FEEDS_URL}/${encodeURIComponent(cameraId)}/frame`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
