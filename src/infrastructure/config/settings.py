@@ -156,7 +156,7 @@ class Settings:
                 "CELERY_RESULT_BACKEND", "redis://localhost:6379/1"
             ),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-            anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
+            anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
             # claude-3-5-sonnet-20241022 was retired 2025-10-28; default to a
             # current vision model so feed frames don't 404.
             anthropic_vision_model=os.getenv(
